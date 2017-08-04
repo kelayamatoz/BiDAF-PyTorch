@@ -11,6 +11,7 @@ from pprint import pprint
 from tqdm import tqdm
 
 from bidaf.read_data import read_data, get_squad_data_filter, update_config
+from bidaf.trainer import MultiGPUTrainer
 
 def main(config):
     print(config.mode)
@@ -69,6 +70,9 @@ def _train(config):
                         for idx in range(config.word_vocab_size)])
     config.emb_mat = emb_mat
 
+    # Construct model and trainer
+    trainer = MultiGPUTrainer(config)
+
     # Begin training
     num_steps = config.num_steps or int(math.ceil(train_data.num_examples / (config.batch_size * config.num_gpus))) * config.num_epochs
     global_step = 0
@@ -79,6 +83,7 @@ def _train(config):
         global_step += 1
         get_summary = global_step % config.log_period == 0
         # loss, summary, train_op = trainer.step(sess, batches, get_summary=get_summary)
+        trainer.step(batches, get_summary=get_su)
         print("Set up trainer here...")
         if get_summary:
             # graph_handler.add_summary(summary, global_step)
