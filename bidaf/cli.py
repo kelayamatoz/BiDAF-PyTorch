@@ -2,7 +2,7 @@ import os
 
 from argparse import ArgumentParser
 
-from basic.main import main as m
+from bidaf.main import main as m
 
 def get_args():
     # Names and directories
@@ -22,7 +22,7 @@ def get_args():
     flags.add_argument("--num_gpus", type=int, default=1, help="num of gpus or cpus for computing gradients [1]")
 
     # Essential training and test options
-    flags.add_argument("--mode", type=str, default="test", help="trains | test | forward [test]")
+    flags.add_argument("--mode", type=str, default="test", help="train | test | forward [test]")
     flags.add_argument("--load", type=bool, default=True, help="load saved data? [True]")
     flags.add_argument("--single", type=bool, default=False, help="supervise only the answer sentence? [False]")
     flags.add_argument("--debug", type=bool, default=False, help="Debugging mode? [False]")

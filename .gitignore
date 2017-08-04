@@ -1,1 +1,6 @@
 data/
+out/
+bidaf/__pycache__
+squad/__pycache__
+
+*.swp
