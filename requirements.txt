@@ -1,0 +1,7 @@
+nltk
+tqdm
+jinja2
+numpy
+pandas
+msgpack-python
+spacy
