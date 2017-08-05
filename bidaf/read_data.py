@@ -9,6 +9,7 @@ import numpy as np
 
 from bidaf.general_utils import index
 from bidaf.general_utils import grouper
+from squad.prepro import update_config_with_prepro
 
 from itertools import zip_longest
 from functools import reduce
@@ -281,6 +282,7 @@ def get_squad_data_filter(config):
 
 
 def update_config(config, data_sets):
+    update_config_with_prepro(config)
     config.max_num_sents = 0
     config.max_sent_size = 0
     config.max_ques_size = 0

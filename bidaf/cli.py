@@ -25,7 +25,7 @@ def get_args():
     flags.add_argument("--mode", type=str, default="test", help="train | test | forward [test]")
     flags.add_argument("--load", type=bool, default=True, help="load saved data? [True]")
     flags.add_argument("--single", type=bool, default=False, help="supervise only the answer sentence? [False]")
-    flags.add_argument("--debug", type=bool, default=False, help="Debugging mode? [False]")
+    flags.add_argument("--debug", default=False, action="store_true", help="Debugging mode? [False]")
     flags.add_argument("--load_ema", type=bool, default=True, help="load exponential average of variables when testing?  [True]")
     flags.add_argument("--eval", type=bool, default=True, help="eval? [True]")
 

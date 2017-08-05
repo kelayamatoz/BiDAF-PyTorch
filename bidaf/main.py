@@ -14,6 +14,7 @@ from bidaf.read_data import read_data, get_squad_data_filter, update_config
 from bidaf.trainer import MultiGPUTrainer
 from bidaf.model import BiDAF
 
+
 def main(config):
     print(config.mode)
     if config.mode == 'train':
@@ -24,6 +25,7 @@ def main(config):
         _forward(config)
     else:
         raise ValueError("Invalid value for 'mode': {}".format(config.mode))
+
 
 def set_dirs(config):
     # create directories
@@ -46,6 +48,7 @@ def set_dirs(config):
     if not os.path.exists(config.eval_dir):
         os.mkdir(config.eval_dir)
 
+
 def _config_debug(config):
     if config.debug:
         config.num_steps = 2
@@ -54,6 +57,7 @@ def _config_debug(config):
         config.save_period = 1
         config.val_num_batches = 2
         config.test_num_batches = 2
+
 
 def _train(config):
     data_filter = get_squad_data_filter(config)
@@ -121,8 +125,10 @@ def _train(config):
         # graph_handler.save(sess, global_step=global_step)
         print("Period saving")
 
+
 def _forward(config):
     raise NotImplementedError("_forward Not implemented")
+
 
 def _test(config):
     raise NotImplementedError("_test Not implemented")

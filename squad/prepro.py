@@ -39,6 +39,13 @@ def get_args():
     return parser.parse_args()
 
 
+def update_config_with_prepro(config):
+    parser = get_args()
+    config.glove_corpus = parser.glove_corpus
+    config.glove_dir = parser.glove_dir
+    config.glove_vec_size = parser.glove_vec_size
+
+
 def create_all(args):
     out_path = os.path.join(args.source_dir, "all-v1.1.json")
     if os.path.exists(out_path):
