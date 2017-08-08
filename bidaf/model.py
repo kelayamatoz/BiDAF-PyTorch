@@ -46,7 +46,7 @@ class BiDAF(nn.Module):
 
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat=None):
-        print("test getting value of x")
+        print("test getting value of x" )
         print(x)
         # a = self.args
  
@@ -91,4 +91,8 @@ class BiDAF(nn.Module):
         # text_attn_enc_end = self.end_encoder(span)
         # logits_end = self.lin_end(text_attn_enc_end, text_attn, text_mask)
         # end = L.softmax3d(logits_end, a.max_num_sents, a.max_sent_size)
-        # return start, end
+
+        # TODO: For testing the glue logic
+        start = 0
+        end = 0
+        return start, end
