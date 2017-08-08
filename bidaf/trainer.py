@@ -5,14 +5,12 @@ import numpy as np
 import random
 
 
-# TODO: Need to pass in multiple models in the next iteration
 class MultiGPUTrainer(object):
     def __init__(self, config, model):
         # assert isinstance(model, Model)
         self.config = config
-        # TODO: self.models = models
         self.model = model
-        # self.model = model
+        self.optimizer = O.Adadelta(config.init_lr)
         # self.opt = tf.train.AdadeltaOptimizer(config.init_lr)
         # self.loss = model.get_loss()
         # self.var_list = model.get_var_list()
@@ -21,12 +19,10 @@ class MultiGPUTrainer(object):
         # self.grads = self.opt.compute_gradients(self.loss, var_list=self.var_list)
         # self.train_op = self.opt.apply_gradients(self.grads, global_step=self.global_step)
 
-    # def get_train_op(self)i
-        # return self.train_op
+    def criterion(self, output, target):
+        return None()
 
     def step(self, batch, get_summary=False, supervised=True):
-        # assert isinstance(sess, tf.Session)
-        # TODO: for batch, model in zip(batches, self.models)
         config = self.config
         N, M, JX, JQ, VW, VC, d, W = \
             config.batch_size, config.max_num_sents, config.max_sent_size, \
@@ -148,14 +144,8 @@ class MultiGPUTrainer(object):
             new_emb_mat = batch.shared['new_emb_mat']
             inputs.append(new_emb_mat)
 
-        print(self.model)
-        self.model(*inputs)
-
-        # feed_dict = self.model.get_feed_dict(ds, True)
-        # if get_summary:
-        #     loss, summary, train_op = \
-        #         sess.run([self.loss, self.summary, self.train_op], feed_dict=feed_dict)
-        # else:
-        #     loss, train_op = sess.run([self.loss, self.train_op], feed_dict=feed_dict)
-        #     summary = None
-        # return loss, summary, train_op
+        m_start, m_end = self.model(*inputs)
+        loss = criterion(m_start, m_end, t_start, t_end)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
