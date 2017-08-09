@@ -38,5 +38,3 @@ def train(config):
     print("training")
     for epoch in range(config.epochs):
         train_epoch(config, model, opt, train_iter)
-
-

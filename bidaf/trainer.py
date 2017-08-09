@@ -19,9 +19,6 @@ class MultiGPUTrainer(object):
         # self.grads = self.opt.compute_gradients(self.loss, var_list=self.var_list)
         # self.train_op = self.opt.apply_gradients(self.grads, global_step=self.global_step)
 
-    def criterion(self, output, target):
-        return None()
-
     def step(self, batch, get_summary=False, supervised=True):
         config = self.config
         N, M, JX, JQ, VW, VC, d, W = \
@@ -50,7 +47,7 @@ class MultiGPUTrainer(object):
                 new_M = 1
             else:
                 new_M = max(len(para) for para in batch.data['x'])
-            M = min(M, new_M)
+            M = min(M, new_emb_mat_M)
 
         x = np.zeros([N, M, JX], dtype='int32')
         cx = np.zeros([N, M, JX, W], dtype='int32')
@@ -145,7 +142,10 @@ class MultiGPUTrainer(object):
             inputs.append(new_emb_mat)
 
         m_start, m_end = self.model(*inputs)
-        loss = criterion(m_start, m_end, t_start, t_end)
+
+        # calcualte loss
+        loss_mask = np.amax(q_mask.astype(float), 1) 
+
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()

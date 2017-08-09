@@ -77,6 +77,7 @@ def _train(config):
 
     model = BiDAF(config)
     model.train()
+    model.word_embed.weight.data = emb_mat
     trainer = MultiGPUTrainer(config, model)
 
     # Begin training

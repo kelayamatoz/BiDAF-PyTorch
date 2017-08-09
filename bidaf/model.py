@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import logging
-import layers as L
+import bidaf.layers as L
 
 from torch.autograd import Variable
 
@@ -40,7 +40,7 @@ class BiDAF(nn.Module):
 
         self.enc_start_shape = (batch_size, max_num_sents * max_sent_size, d_hidden * 2)
         self.logits_reshape = (batch_size, max_num_sents * max_sent_size)
-        self.args = args
+        self.args = config
 
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat=None):

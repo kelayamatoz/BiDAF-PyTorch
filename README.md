@@ -19,3 +19,4 @@ TODOs:
 - Summary at the right epoch
 - Loss function
 - embedded matrix
+- Update requirements.txt
