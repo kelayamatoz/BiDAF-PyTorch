@@ -4,6 +4,7 @@ import math
 import os
 import shutil
 import numpy as np
+import torch
 
 from itertools import zip_longest
 from functools import reduce
@@ -77,7 +78,7 @@ def _train(config):
 
     model = BiDAF(config)
     model.train()
-    model.word_embed.weight.data = emb_mat
+    model.word_embed.weight = torch.nn.Parameter(torch.Tensor(emb_mat))
     trainer = MultiGPUTrainer(config, model)
 
     # Begin training

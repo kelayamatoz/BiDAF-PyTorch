@@ -152,8 +152,7 @@ class BiEncoder(nn.Module):
         batch_size = inputs.size()[1]
         state_shape = self.config.n_cells, batch_size, self.config.d_hidden
         h0 = c0 = Variable(inputs.data.new(*state_shape).zero_())
-        outputs, _ = self.rnn(inputs, (h0, c0)) 
-        return outputs
+        outputs, _ = self.rnn(inputs, (h0, c0)) return outputs
 
 
 class FixedEmbedding(nn.Embedding):

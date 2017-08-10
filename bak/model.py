@@ -1,41 +1,69 @@
 import torch
+import torch.optim as optim
 import torch.nn as nn
-import layers as L
+import torch.nn.functional as F
+import numpy as np
+import logging
+import bidaf.layers as L
+
+from torch.autograd import Variable
 
 
-class BIDAF(nn.Module):
-    def __init__(self, args):
-        super(BIDAF, self).__init__()
+class BiDAF(nn.Module):
+    def __init__(self, config):
+        super(BiDAF, self).__init__()
+        self.config = config
+        self.logits = None
+        self.yp = None
+        # TODO: variable embedded weights
 
-        batch_size, d_hidden = args.batch_size, args.d_hidden
-        max_num_sents, max_sent_size = args.max_num_sents, args.max_sent_size
-        max_ques_size, max_word_size = args.max_ques_size, args.max_word_size
-        word_vocab_size, char_vocab_size = args.word_vocab_size, args.char_vocab_size
-        d_char_embed, d_embed = args.d_char_embed, args.d_embed
-        d_char_out = args.d_char_out
+
+    def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat=None):
+        config = self.config 
+        N, M, JX, JQ, VW, VC, W = \
+            config.batch_size, config.max_num_sents, config.max_sent_size, \
+            config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.max_word_size
+        JX = x.shape[2]
+  
+class BiDAF_BAK(nn.Module):
+    def __init__(self, config):
+        super(BiDAF, self).__init__()
+        self.config = config
+        N, M, JX, JQ, VW, VC, W = \
+            config.batch_size, config.max_num_sents, config.max_sent_size, \
+            config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.max_word_size
+
+        # params from TBA
+        batch_size, d_hidden = config.batch_size, config.hidden_size
+        max_num_sents, max_sent_size = config.max_num_sents, config.max_sent_size
+        max_ques_size, max_word_size = config.max_ques_size, config.max_word_size
+        word_vocab_size, char_vocab_size = config.word_vocab_size, config.char_vocab_size
+        d_char_embed, d_embed = config.char_emb_size, config.glove_vec_size
+        d_char_out = config.char_out_size
 
         seq_in_size = 4*d_hidden
         lin_config = [seq_in_size]*2
         self.char_embed = L.FixedEmbedding(char_vocab_size, d_char_embed)
         self.word_embed = L.FixedEmbedding(word_vocab_size, d_embed)
         self.h_net = L.HighwayNet(d_embed, args.n_hway_layers)
-        #self.pre_encoder = L.BiEncoder(word_embed_size, args)
-        #self.attend = L.BiAttention(size, args)
-        #self.start_encoder0 = L.BiEncoder(word_embed_size, args)
-        #self.start_encoder1 = L.BiEncoder(word_embed_size, args)
-        #self.end_encoder = L.BiEncoder(word_embed_size, args)
+        self.pre_encoder = L.BiEncoder(word_embed_size, args)
+        self.attend = L.BiAttention(size, args)
+        self.start_encoder0 = L.BiEncoder(word_embed_size, args)
+        self.start_encoder1 = L.BiEncoder(word_embed_size, args)
+        self.end_encoder = L.BiEncoder(word_embed_size, args)
         self.lin_start = L.TFLinear(*lin_config, args.answer_func)
         self.lin_end = L.TFLinear(*lin_config, args.answer_func)
 
         self.enc_start_shape = (batch_size, max_num_sents * max_sent_size, d_hidden * 2)
         self.logits_reshape = (batch_size, max_num_sents * max_sent_size)
-        self.args = args
+        self.args = config
 
-    def forward(self, ctext, text, text_mask, cquery, query, query_mask):
+
+    def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat=None):
         a = self.args
- 
+
         # Character Embedding Layer
-        ctext_embed = self.char_embed(ctext) # Acx
+        ctext_embed = self.char_embed(ctext)
         cquery_embed = self.char_embed(cquery)
         ctext_embed = self.conv(ctext_embed)
         cquery_embed = self.conv(cquery_embed)

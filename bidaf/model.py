@@ -4,87 +4,185 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import logging
-import bidaf.layers as L
+import layers as L
 
 from torch.autograd import Variable
+from torch.nn import Embedding
+from torch import zeros, Tensor, LongTensor, from_numpy
+
+
+from argparse import ArgumentParser
+
+
+dtype = torch.FloatTensor
 
 
 class BiDAF(nn.Module):
     def __init__(self, config):
         super(BiDAF, self).__init__()
         self.config = config
+        self.logits = None
+        self.yp = None
+        self.word_embed = Embedding(config.word_vocab_size, \
+                                           config.glove_vec_size)
+        self.char_embed = Embedding(config.char_vocab_size, \
+                                           config.char_emb_size)
+
+    def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
+        config = self.config 
         N, M, JX, JQ, VW, VC, W = \
             config.batch_size, config.max_num_sents, config.max_sent_size, \
             config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.max_word_size
+        JX = x.shape[2]
+        JQ = q.shape[1]
+        M = x.shape[1]
 
-        # params from TBA
-        batch_size, d_hidden = config.batch_size, config.hidden_size
-        max_num_sents, max_sent_size = config.max_num_sents, config.max_sent_size
-        max_ques_size, max_word_size = config.max_ques_size, config.max_word_size
-        word_vocab_size, char_vocab_size = config.word_vocab_size, config.char_vocab_size
-        d_char_embed, d_embed = config.char_emb_size, config.glove_vec_size
-        d_char_out = config.char_out_size
+        dc, dw, dco = config.char_emb_size, config.word_emb_size, config.char_out_size
+        if config.use_char_emb:
+            print("char")
+            cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1)))
+            Acq = self.char_embed(Variable(cq_tensor))
+            cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1)))
+            Acx = self.char_embed(Variable(cx_tensor))
+            Acx = Acx.view(-1, JX, W, dc)
+            Acq = Acq.view(-1, JQ, W, dc)
 
-        seq_in_size = 4*d_hidden
-        lin_config = [seq_in_size]*2
-        self.char_embed = L.FixedEmbedding(char_vocab_size, d_char_embed)
-        self.word_embed = L.FixedEmbedding(word_vocab_size, d_embed)
-        self.h_net = L.HighwayNet(d_embed, args.n_hway_layers)
-        self.pre_encoder = L.BiEncoder(word_embed_size, args)
-        self.attend = L.BiAttention(size, args)
-        self.start_encoder0 = L.BiEncoder(word_embed_size, args)
-        self.start_encoder1 = L.BiEncoder(word_embed_size, args)
-        self.end_encoder = L.BiEncoder(word_embed_size, args)
-        self.lin_start = L.TFLinear(*lin_config, args.answer_func)
-        self.lin_end = L.TFLinear(*lin_config, args.answer_func)
+            filter_sizes = list(map(int, config.out_channel_dims.split(',')))
+            heights = list(map(int, config.filter_heights.split(',')))
+            assert sum(filter_sizes) == dco, (filter_sizes, dco)
 
-        self.enc_start_shape = (batch_size, max_num_sents * max_sent_size, d_hidden * 2)
-        self.logits_reshape = (batch_size, max_num_sents * max_sent_size)
-        self.args = config
+            printf("conv")
+        return None, None
+  
 
+if __name__ == '__main__':
+    print("testing correctness of the model") 
+    flags = ArgumentParser(description='Model Tester')
+    flags.add_argument("--max_num_sents", type=int, default=100)
+    flags.add_argument("--max_sent_size", type=int, default=50)
+    flags.add_argument("--max_ques_size", type=int, default=60)
+    flags.add_argument("--word_vocab_size", type=int, default=100)
+    flags.add_argument("--char_vocab_size", type=int, default=100)
+    flags.add_argument("--max_word_size", type=int, default=50)
+    flags.add_argument("--glove_vec_size", type=int, default=100)
+    flags.add_argument("--word_emb_size", type=int, default=200)
 
-    def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat=None):
-        a = self.args
+    flags.add_argument("--model_name", type=str, default="basic", help="Model name [basic]")
+    flags.add_argument("--data_dir", type=str, default="data/squad", help="Data dir [data/squad]")
+    flags.add_argument("--run_id", type=str, default="0", help="Run ID [0]")
+    flags.add_argument("--out_base_dir", type=str, default="out", help="out base dir [out]")
+    flags.add_argument("--forward_name", type=str, default="single", help="Forward name [single]")
+    flags.add_argument("--answer_path", type=str, default="", help="Answer path []")
+    flags.add_argument("--eval_path", type=str, default="", help="Eval path []")
+    flags.add_argument("--load_path", type=str, default="", help="Load path []")
+    flags.add_argument("--shared_path", type=str, default="", help="Shared path []")
 
-        # Character Embedding Layer
-        ctext_embed = self.char_embed(ctext)
-        cquery_embed = self.char_embed(cquery)
-        ctext_embed = self.conv(ctext_embed)
-        cquery_embed = self.conv(cquery_embed)
+    # Device placement flags.add_argument("--device", type=str, default="/cpu:0", help="default device for summing gradients. [/cpu:0]")
+    flags.add_argument("--device_type", type=str, default="gpu", help="device for computing gradients (parallelization). cpu | gpu [gpu]")
+    flags.add_argument("--num_gpus", type=int, default=1, help="num of gpus or cpus for computing gradients [1]")
 
-        # Word Embedding Layer
-        text_embed = self.word_embed(text)
-        query_embed = self.word_embed(query)
+    # Essential training and test options
+    flags.add_argument("--mode", type=str, default="test", help="train | test | forward [test]")
+    flags.add_argument("--load", type=bool, default=True, help="load saved data? [True]")
+    flags.add_argument("--single", type=bool, default=False, help="supervise only the answer sentence? [False]")
+    flags.add_argument("--debug", default=False, action="store_true", help="Debugging mode? [False]")
+    flags.add_argument("--load_ema", type=bool, default=True, help="load exponential average of variables when testing?  [True]")
+    flags.add_argument("--eval", type=bool, default=True, help="eval? [True]")
 
-        # a learned joint character / word embedding
-        text = self.h_net(torch.cat((ctext_embed, text_embed), 3))
-        query = self.h_net(torch.cat((cquery_embed, query_embed), 2))
+    # Training / test parameters
+    flags.add_argument("--batch_size", type=int, default=60, help="Batch size [60]")
+    flags.add_argument("--val_num_batches", type=int, default=100, help="validation num batches [100]")
+    flags.add_argument("--test_num_batches", type=int, default=0, help="test num batches [0]")
+    flags.add_argument("--num_epochs", type=int, default=12, help="Total number of epochs for training [12]")
+    flags.add_argument("--num_steps", type=int, default=20000, help="Number of steps [20000]")
+    flags.add_argument("--load_step", type=int, default=0, help="load step [0]")
+    flags.add_argument("--init_lr", type=float, default=0.5, help="Initial learning rate [0.5]")
+    flags.add_argument("--input_keep_prob", type=float, default=0.8, help="Input keep prob for the dropout of LSTM weights [0.8]")
+    flags.add_argument("--keep_prob", type=float, default=0.8, help="Keep prob for the dropout of Char-CNN weights [0.8]")
+    flags.add_argument("--wd", type=float, default=0.0, help="L2 weight decay for regularization [0.0]")
+    flags.add_argument("--hidden_size", type=int, default=100, help="Hidden size [100]")
+    flags.add_argument("--char_out_size", type=int, default=100, help="char-level word embedding size [100]")
+    flags.add_argument("--char_emb_size", type=int, default=8, help="Char emb size [8]")
+    flags.add_argument("--out_channel_dims", type=str, default="100", help="Out channel dims of Char-CNN, separated by commas [100]")
+    flags.add_argument("--filter_heights", type=str, default="5", help="Filter heights of Char-CNN, separated by commas [5]")
+    flags.add_argument("--finetune", type=bool, default=False, help="Finetune word embeddings? [False]")
+    flags.add_argument("--highway", type=bool, default=True, help="Use highway? [True]")
+    flags.add_argument("--highway_num_layers", type=int, default=2, help="highway num layers [2]")
+    flags.add_argument("--share_cnn_weights", type=bool, default=True, help="Share Char-CNN weights [True]")
+    flags.add_argument("--share_lstm_weights", type=bool, default=True, help="Share pre-processing (phrase-level) LSTM weights [True]")
+    flags.add_argument("--var_decay", type=float, default=0.999, help="Exponential moving average decay for variables [0.999]")
 
-        # Contextual Embedding Layer
-        text = self.pre_encoder(text)
-        query = self.pre_encoder(query)
+    # Optimizations
+    flags.add_argument("--cluster", type=bool, default=False, help="Cluster data for faster training [False]")
+    flags.add_argument("--len_opt", type=bool, default=False, help="Length optimization? [False]")
+    flags.add_argument("--cpu_opt", type=bool, default=False, help="CPU optimization? GPU computation can be slower [False]")
 
-        # Attention Flow Layer
-        text_attn = self.attend(text, query, text_mask, query_mask)
+    # Logging and saving options
+    flags.add_argument("--progress", type=bool, default=True, help="Show progress? [True]")
+    flags.add_argument("--log_period", type=int, default=100, help="Log period [100]")
+    flags.add_argument("--eval_period", type=int, default=1000, help="Eval period [1000]")
+    flags.add_argument("--save_period", type=int, default=1000, help="Save Period [1000]")
+    flags.add_argument("--max_to_keep", type=int, default=20, help="Max recent saves to keep [20]")
+    flags.add_argument("--dump_eval", type=bool, default=True, help="dump eval? [True]")
+    flags.add_argument("--dump_answer", type=bool, default=True, help="dump answer? [True]")
+    flags.add_argument("--vis", type=bool, default=False, help="output visualization numbers? [False]")
+    flags.add_argument("--dump_pickle", type=bool, default=True, help="Dump pickle instead of json? [True]")
+    flags.add_argument("--decay", type=float, default=0.9, help="Exponential moving average decay for lobgging values [0.9]")
 
-        # The input to the modeling layer is G, which encodes the
-        # query-aware representations of context words.
-        # Modeling Layer
-        text_attn_enc_start = self.start_encoder0(text_attn)
-        text_attn_enc_start = self.start_encoder1(text_attn_enc_start)
+    # Thresholds for speed and less memory usage
+    flags.add_argument("--word_count_th", type=int, default=10, help="word count th [100]")
+    flags.add_argument("--char_count_th", type=int, default=50, help="char count th [500]")
+    flags.add_argument("--sent_size_th", type=int, default=400, help="sent size th [64]")
+    flags.add_argument("--num_sents_th", type=int, default=8, help="num sents th [8]")
+    flags.add_argument("--ques_size_th", type=int, default=30, help="ques size th [32]")
+    flags.add_argument("--word_size_th", type=int, default=16, help="word size th [16]")
+    flags.add_argument("--para_size_th", type=int, default=256, help="para size th [256]")
 
-        # p1 = softmax(w^T_{p1}[G;M])
-        # Output Layer
-        logits_start = self.lin_start(text_attn_enc_start, text_attn, text_mask)
-        start = L.softmax3d(logits_start, a.max_num_sents, a.max_sent_size)
+    # Advanced training options
+    flags.add_argument("--lower_word", type=bool, default=True, help="lower word [True]")
+    flags.add_argument("--squash", type=bool, default=False, help="squash the sentences into one? [False]")
+    flags.add_argument("--swap_memory", type=bool, default=True, help="swap memory? [True]")
+    flags.add_argument("--data_filter", type=str, default="max", help="max | valid | semi [max]")
+    flags.add_argument("--use_glove_for_unk", type=bool, default=True, help="use glove for unk [False]")
+    flags.add_argument("--known_if_glove", type=bool, default=True, help="consider as known if present in glove [False]")
+    flags.add_argument("--logit_func", type=str, default="tri_linear", help="logit func [tri_linear]")
+    flags.add_argument("--answer_func", type=str, default="linear", help="answer logit func [linear]")
+    flags.add_argument("--sh_logit_func", type=str, default="tri_linear", help="sh logit func [tri_linear]")
 
-        # softmax of weights from start - not really explained in the paper
-        a1i = L.softsel(text_attn_enc_start.view(self.enc_start_shape),
-                           logits_start.view(self.logits_reshape))\
-                           .unsqueeze(1).unsqueeze(1).repeat(1, a.max_num_sents, a.max_sent_size, 1)
+    # Ablation options
+    flags.add_argument("--use_char_emb", type=bool, default=True, help="use char emb? [True]")
+    flags.add_argument("--use_word_emb", type=bool, default=True, help="use word embedding? [True]")
+    flags.add_argument("--q2c_att", type=bool, default=True, help="question-to-context attention? [True]")
+    flags.add_argument("--c2q_att", type=bool, default=True, help="context-to-question attention? [True]")
+    flags.add_argument("--dynamic_att", type=bool, default=False, help="Dynamic attention [False]")
 
-        span = torch.cat((text_attn, text_attn_enc_start, a1i, text_attn_enc_start * a1i), 3)
-        text_attn_enc_end = self.end_encoder(span)
-        logits_end = self.lin_end(text_attn_enc_end, text_attn, text_mask)
-        end = L.softmax3d(logits_end, a.max_num_sents, a.max_sent_size)
-        return start, end
+    config = flags.parse_args()
+
+    N, M, JX, JQ, VW, VC, d, W = \
+    config.batch_size, config.max_num_sents, config.max_sent_size, \
+    config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.hidden_size, config.max_word_size
+
+    print(" >>>>>>>>>> DIMENSIONS <<<<<<<<<< ")
+    print('N = ' + str(N))
+    print('M = ' + str(M))
+    print('JX = ' + str(JX))
+    print('JQ = ' + str(JQ))
+    print('VW = ' + str(VW))
+    print('VC = ' + str(VC))
+    print('d = ' + str(d))
+    print('W = ' + str(W))
+    print(" >>>>>>>>>> DIMENSIONS <<<<<<<<<< ")
+
+    x = np.zeros([N, M, JX], dtype='int')
+    cx = np.zeros([N, M, JX, W], dtype='int')
+    x_mask = np.zeros([N, M, JX], dtype='bool')
+    q = np.zeros([N, JQ], dtype='int')
+    cq = np.zeros([N, JQ, W], dtype='int')
+    q_mask = np.zeros([N, JQ], dtype='bool')
+    y = np.zeros([N, M, JX], dtype='bool')
+    y2 = np.zeros([N, M, JX], dtype='bool')
+    new_emb_mat = np.zeros([VW, d], dtype='float')
+
+    inputs = [x, cx, x_mask, q, cq, q_mask, new_emb_mat]
+    model = BiDAF(config)
+    model(*inputs)

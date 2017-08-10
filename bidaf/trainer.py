@@ -10,14 +10,8 @@ class MultiGPUTrainer(object):
         # assert isinstance(model, Model)
         self.config = config
         self.model = model
-        self.optimizer = O.Adadelta(config.init_lr)
-        # self.opt = tf.train.AdadeltaOptimizer(config.init_lr)
-        # self.loss = model.get_loss()
-        # self.var_list = model.get_var_list()
-        # self.global_step = model.get_global_step()
-        # self.summary = model.summary
-        # self.grads = self.opt.compute_gradients(self.loss, var_list=self.var_list)
-        # self.train_op = self.opt.apply_gradients(self.grads, global_step=self.global_step)
+        # self.optimizer = O.Adadelta(config.init_lr)
+
 
     def step(self, batch, get_summary=False, supervised=True):
         config = self.config
@@ -136,16 +130,14 @@ class MultiGPUTrainer(object):
                     if k + 1 == config.max_word_size:
                         break
 
-        inputs = [x, cx, x_mask, q, cq, q_mask]
-        if config.use_glove_for_unk:
-            new_emb_mat = batch.shared['new_emb_mat']
-            inputs.append(new_emb_mat)
+        new_emb_mat = batch.shared['new_emb_mat']
+        inputs = [x, cx, x_mask, q, cq, q_mask, new_emb_mat]
 
         m_start, m_end = self.model(*inputs)
 
         # calcualte loss
         loss_mask = np.amax(q_mask.astype(float), 1) 
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        # optimizer.zero_grad()
+        # loss.backward()
+        # optimizer.step()

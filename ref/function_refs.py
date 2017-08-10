@@ -15,3 +15,5 @@ def _build_loss(self):
     self.loss = tf.add_n(tf.get_collection('losses', scope=self.scope), name='loss')
     tf.scalar_summary(self.loss.op.name, self.loss)
     tf.add_to_collection('ema/scalar', self.loss)
+
+    
