@@ -8,7 +8,8 @@ import layers as L
 
 from torch.autograd import Variable
 from torch.nn import Embedding
-from torch import zeros, Tensor, LongTensor, from_numpy
+from torch import zeros, from_numpy, Tensor
+from torch import LongTensor, FloatTensor
 
 
 from argparse import ArgumentParser
@@ -27,6 +28,7 @@ class BiDAF(nn.Module):
                                            config.glove_vec_size)
         self.char_embed = Embedding(config.char_vocab_size, \
                                            config.char_emb_size)
+        self.multiconv_1d = L.MultiConv1D(config.is_train, config.keep_prob)
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config 
@@ -40,9 +42,9 @@ class BiDAF(nn.Module):
         dc, dw, dco = config.char_emb_size, config.word_emb_size, config.char_out_size
         if config.use_char_emb:
             print("char")
-            cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1)))
+            cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1))).cuda()
             Acq = self.char_embed(Variable(cq_tensor))
-            cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1)))
+            cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1))).cuda()
             Acx = self.char_embed(Variable(cx_tensor))
             Acx = Acx.view(-1, JX, W, dc)
             Acq = Acq.view(-1, JQ, W, dc)
@@ -51,7 +53,9 @@ class BiDAF(nn.Module):
             heights = list(map(int, config.filter_heights.split(',')))
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
 
-            printf("conv")
+            print("conv")
+            xx = self.multiconv_1d(Acx, filter_sizes, heights, "VALID")
+            print(xx.size())
         return None, None
   
 
@@ -158,6 +162,8 @@ if __name__ == '__main__':
 
     config = flags.parse_args()
 
+
+
     N, M, JX, JQ, VW, VC, d, W = \
     config.batch_size, config.max_num_sents, config.max_sent_size, \
     config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.hidden_size, config.max_word_size
@@ -184,5 +190,9 @@ if __name__ == '__main__':
     new_emb_mat = np.zeros([VW, d], dtype='float')
 
     inputs = [x, cx, x_mask, q, cq, q_mask, new_emb_mat]
+    config.is_train = True
     model = BiDAF(config)
+    if torch.cuda.is_available():
+        print("cuda is available")
+        model.cuda()
     model(*inputs)

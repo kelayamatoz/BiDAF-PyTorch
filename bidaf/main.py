@@ -75,6 +75,7 @@ def _train(config):
                         else np.random.multivariate_normal(np.zeros(config.word_emb_size), np.eye(config.word_emb_size))
                         for idx in range(config.word_vocab_size)])
     config.emb_mat = emb_mat
+    config.is_train = True
 
     model = BiDAF(config)
     model.train()

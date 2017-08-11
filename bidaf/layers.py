@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
+from torch import Tensor
 
 VERY_BIG_NUMBER = 1e30
 VERY_SMALL_NUMBER = 1e-30
@@ -40,6 +41,56 @@ def span_loss(config, q_mask, logits_start, start, logits_end, end):
     return ce_loss_end - ce_loss_start
 
 
+class Conv1D(nn.Module):
+    def __init__(self, filter_size, height, is_train=None, keep_prob=0.8):
+        super(Conv1D, self).__init__()
+        self.filter_size = filter_size
+        self.height = height
+        self.is_train = is_train
+        self.keep_prob = keep_prob
+        self.dropout_ = nn.Dropout(1. - keep_prob)
+
+    def forward(self, in_, padding):
+        num_channels = in_.size()[-1]
+        filter_ = Variable(Tensor(1, self.height, num_channels, self.filter_size))
+        bias_ = Variable(Tensor(self.filter_size))
+        strides = [1, 1]
+        if self.is_train is not None and self.keep_prob < 1.0:
+            self.dropout_(in_)
+        print(in_.size())
+        print(filter_.size())
+        # default in: batch, iH, iW, in_channels
+        # default filter: kH, kW, in_channels, out_channels
+        # in: batch, in_channels, iH, iW
+        # filter: out_channels, in_channels/groups, kH, kW
+        t_in = in_.permute(0, 3, 1, 2)
+        t_filter = filter_.permute(3, 2, 0, 1)
+        print(t_in.size())
+        print(t_filter.size())
+        xxc = F.conv2d(t_in, t_filter)
+        out = torch.max(F.relu(xxc))
+
+class MultiConv1D(nn.Module):
+    def __init__(self, is_train, keep_prob):
+        super(MultiConv1D, self).__init__()
+        self.is_train = is_train
+        self.keep_prob = keep_prob
+
+
+    def forward(self, in_, filter_sizes, heights, padding):
+        assert len(filter_sizes) == len(heights)
+        outs = []
+        for filter_size, height in zip(filter_sizes, heights):
+            print("filter_size = "+str(filter_size))
+            print("height = "+str(height))
+            if filter_size == 0:
+                continue
+            conv1d_layer = Conv1D(filter_size, height, is_train=self.is_train, keep_prob=self.keep_prob)
+            out = conv1d_layer(in_, padding)
+            outs.append(out)
+        concat_out = torch.cat(outs, 2)
+
+# TBA implemenations
 class HighwayLayer(nn.Module):
     def __init__(self, size, bias_init=0.0, nonlin=nn.ReLU(inplace=True), gate_nonlin=F.sigmoid):
         super(HighwayLayer, self).__init__()
