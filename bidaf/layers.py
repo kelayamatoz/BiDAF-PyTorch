@@ -42,33 +42,35 @@ def span_loss(config, q_mask, logits_start, start, logits_end, end):
 
 
 class Conv1D(nn.Module):
-    def __init__(self, filter_size, height, is_train=None, keep_prob=0.8):
+    def __init__(self, batch_size, in_channels, out_channels, kernel_size, is_train=None, keep_prob=0.8):
         super(Conv1D, self).__init__()
         self.filter_size = filter_size
         self.height = height
+        self.num_channels = num_channels
         self.is_train = is_train
         self.keep_prob = keep_prob
         self.dropout_ = nn.Dropout(1. - keep_prob)
+        self.conv2d_ = nn.Conv2d(in_channels, out_channels, kernel_size)
+
 
     def forward(self, in_, padding):
         num_channels = in_.size()[-1]
-        filter_ = Variable(Tensor(1, self.height, num_channels, self.filter_size))
+        # default filter: kH, kW, in_channels, out_channels
+        # filter_ = Variable(Tensor(1, self.height, num_channels, self.filter_size))
         bias_ = Variable(Tensor(self.filter_size))
-        strides = [1, 1]
         if self.is_train is not None and self.keep_prob < 1.0:
             self.dropout_(in_)
         print(in_.size())
         print(filter_.size())
         # default in: batch, iH, iW, in_channels
-        # default filter: kH, kW, in_channels, out_channels
         # in: batch, in_channels, iH, iW
         # filter: out_channels, in_channels/groups, kH, kW
         t_in = in_.permute(0, 3, 1, 2)
-        t_filter = filter_.permute(3, 2, 0, 1)
         print(t_in.size())
         print(t_filter.size())
-        xxc = F.conv2d(t_in, t_filter)
-        out = torch.max(F.relu(xxc))
+        xxc = self.conv2d_(t_in)
+        out = torch.max(F.relu(xxc), 2)
+
 
 class MultiConv1D(nn.Module):
     def __init__(self, is_train, keep_prob):
@@ -85,10 +87,12 @@ class MultiConv1D(nn.Module):
             print("height = "+str(height))
             if filter_size == 0:
                 continue
-            conv1d_layer = Conv1D(filter_size, height, is_train=self.is_train, keep_prob=self.keep_prob)
+            conv1d_layer = Conv1D(in_.size()[0], in_.size()[-1], \
+                                  filter_size, height, is_train=self.is_train, keep_prob=self.keep_prob)
             out = conv1d_layer(in_, padding)
             outs.append(out)
         concat_out = torch.cat(outs, 2)
+
 
 # TBA implemenations
 class HighwayLayer(nn.Module):

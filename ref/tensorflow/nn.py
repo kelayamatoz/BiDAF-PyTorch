@@ -161,7 +161,8 @@ def conv1d(in_, filter_size, height, padding, is_train=None, keep_prob=1.0, scop
         strides = [1, 1, 1, 1]
         if is_train is not None and keep_prob < 1.0:
             in_ = dropout(in_, keep_prob, is_train)
-        # batch, in_height, in_width, channels
+        # in_: batch, in_height, in_width, channels
+        # filter_: filter_height, filter_width, in_channels, out_channels
         xxc = tf.nn.conv2d(in_, filter_, strides, padding) + bias  # [N*M, JX, W/filter_stride, d]
         out = tf.reduce_max(tf.nn.relu(xxc), 2)  # [-1, JX, d]
         return out
