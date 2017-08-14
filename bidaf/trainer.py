@@ -44,14 +44,14 @@ class MultiGPUTrainer(object):
             M = min(M, new_emb_mat_M)
 
         x = np.zeros([N, M, JX], dtype='int32')
-        cx = np.zeros([N, M, JX, W], dtype='int32')
+        cx = np.zeros([N, M, JX, W], dtype='int')
         x_mask = np.zeros([N, M, JX], dtype='bool')
         q = np.zeros([N, JQ], dtype='int32')
-        cq = np.zeros([N, JQ, W], dtype='int32')
+        cq = np.zeros([N, JQ, W], dtype='int')
         q_mask = np.zeros([N, JQ], dtype='bool')
         y = np.zeros([N, M, JX], dtype='bool')
         y2 = np.zeros([N, M, JX], dtype='bool')
-    
+
         X = batch.data['x']
         CX = batch.data['cx']
 

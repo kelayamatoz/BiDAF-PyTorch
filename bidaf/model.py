@@ -15,7 +15,9 @@ from torch import LongTensor, FloatTensor
 from argparse import ArgumentParser
 
 
-dtype = torch.FloatTensor
+# dtype = torch.FloatTensor
+dtype = torch.cuda.FloatTensor
+ldtype = torch.cuda.LongTensor
 
 
 class BiDAF(nn.Module):
@@ -31,7 +33,7 @@ class BiDAF(nn.Module):
         self.multiconv_1d = L.MultiConv1D(config.is_train, config.keep_prob)
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
-        config = self.config 
+        config = self.config
         N, M, JX, JQ, VW, VC, W = \
             config.batch_size, config.max_num_sents, config.max_sent_size, \
             config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.max_word_size
@@ -42,9 +44,9 @@ class BiDAF(nn.Module):
         dc, dw, dco = config.char_emb_size, config.word_emb_size, config.char_out_size
         if config.use_char_emb:
             print("char")
-            cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1))).cuda()
+            cq_tensor = LongTensor(cq.reshape(N, -1)).type(ldtype)
             Acq = self.char_embed(Variable(cq_tensor))
-            cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1))).cuda()
+            cx_tensor = LongTensor(cx.reshape(N, -1)).type(ldtype)
             Acx = self.char_embed(Variable(cx_tensor))
             Acx = Acx.view(-1, JX, W, dc)
             Acq = Acq.view(-1, JQ, W, dc)
@@ -57,10 +59,10 @@ class BiDAF(nn.Module):
             xx = self.multiconv_1d(Acx, filter_sizes, heights, "VALID")
             print(xx.size())
         return None, None
-  
+
 
 if __name__ == '__main__':
-    print("testing correctness of the model") 
+    print("testing correctness of the model")
     flags = ArgumentParser(description='Model Tester')
     flags.add_argument("--max_num_sents", type=int, default=100)
     flags.add_argument("--max_sent_size", type=int, default=50)
@@ -189,10 +191,8 @@ if __name__ == '__main__':
     y2 = np.zeros([N, M, JX], dtype='bool')
     new_emb_mat = np.zeros([VW, d], dtype='float')
 
-    inputs = [x, cx, x_mask, q, cq, q_mask, new_emb_mat]
     config.is_train = True
     model = BiDAF(config)
-    if torch.cuda.is_available():
-        print("cuda is available")
-        model.cuda()
-    model(*inputs)
+    model.cuda()
+    inputs = [x, cx, x_mask, q, cq, q_mask, new_emb_mat]
+    start, end = model(*inputs)

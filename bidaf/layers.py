@@ -10,6 +10,9 @@ VERY_POSITIVE_NUMBER = VERY_BIG_NUMBER
 VERY_NEGATIVE_NUMBER = -VERY_BIG_NUMBER
 
 
+dtype = torch.cuda.FloatTensor
+
+
 def softsel(target, logits):
     out = F.softmax(logits)
     out = out.unsqueeze(len(out.size())).mul(target).sum(len(target.size())-2)
@@ -44,12 +47,16 @@ def span_loss(config, q_mask, logits_start, start, logits_end, end):
 class Conv1D(nn.Module):
     def __init__(self, batch_size, in_channels, out_channels, kernel_size, is_train=None, keep_prob=0.8):
         super(Conv1D, self).__init__()
-        self.filter_size = filter_size
-        self.height = height
-        self.num_channels = num_channels
+        self.out_channels = out_channels
+        self.kernel_size = kernel_size
+        self.in_channels = in_channels
         self.is_train = is_train
         self.keep_prob = keep_prob
         self.dropout_ = nn.Dropout(1. - keep_prob)
+        print("in conv1d")
+        print("in_channels = " + str(in_channels))
+        print("out_channels = " + str(out_channels))
+        print("kernel_size = " + str(kernel_size))
         self.conv2d_ = nn.Conv2d(in_channels, out_channels, kernel_size)
 
 
@@ -57,17 +64,15 @@ class Conv1D(nn.Module):
         num_channels = in_.size()[-1]
         # default filter: kH, kW, in_channels, out_channels
         # filter_ = Variable(Tensor(1, self.height, num_channels, self.filter_size))
-        bias_ = Variable(Tensor(self.filter_size))
+        # desired filter: in channels, out channels, kernel_size
+        bias_ = Variable(Tensor(self.out_channels)).type(dtype)
         if self.is_train is not None and self.keep_prob < 1.0:
             self.dropout_(in_)
-        print(in_.size())
-        print(filter_.size())
+        print("in_ size = " + str(in_.size()))
         # default in: batch, iH, iW, in_channels
         # in: batch, in_channels, iH, iW
-        # filter: out_channels, in_channels/groups, kH, kW
         t_in = in_.permute(0, 3, 1, 2)
-        print(t_in.size())
-        print(t_filter.size())
+        print("permuted_in_ size = " + str(t_in.size()))
         xxc = self.conv2d_(t_in)
         out = torch.max(F.relu(xxc), 2)
 
@@ -87,8 +92,11 @@ class MultiConv1D(nn.Module):
             print("height = "+str(height))
             if filter_size == 0:
                 continue
-            conv1d_layer = Conv1D(in_.size()[0], in_.size()[-1], \
-                                  filter_size, height, is_train=self.is_train, keep_prob=self.keep_prob)
+            num_channels = in_.size()[-1]
+            batch_size = in_.size()[0]
+            conv1d_layer = Conv1D(batch_size, num_channels, \
+                                  filter_size, (1, height), \
+                                  is_train=self.is_train, keep_prob=self.keep_prob)
             out = conv1d_layer(in_, padding)
             outs.append(out)
         concat_out = torch.cat(outs, 2)
