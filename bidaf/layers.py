@@ -3,14 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch import Tensor
+import code
 
 VERY_BIG_NUMBER = 1e30
 VERY_SMALL_NUMBER = 1e-30
 VERY_POSITIVE_NUMBER = VERY_BIG_NUMBER
 VERY_NEGATIVE_NUMBER = -VERY_BIG_NUMBER
 
-
-dtype = torch.cuda.FloatTensor
+if torch.cuda.is_available():
+    dtype = torch.cuda.FloatTensor
+else:
+    dtype = torch.FloatTensor
 
 
 def softsel(target, logits):
@@ -45,43 +48,63 @@ def span_loss(config, q_mask, logits_start, start, logits_end, end):
 
 
 class Conv1D(nn.Module):
-    def __init__(self, batch_size, in_channels, out_channels, kernel_size, is_train=None, keep_prob=0.8):
+    def __init__(self, batch_size, in_channels, out_channels, filter_height, filter_width, is_train=None, keep_prob=0.8, padding=0):
         super(Conv1D, self).__init__()
         self.out_channels = out_channels
-        self.kernel_size = kernel_size
         self.in_channels = in_channels
         self.is_train = is_train
         self.keep_prob = keep_prob
         self.dropout_ = nn.Dropout(1. - keep_prob)
-        print("in conv1d")
-        print("in_channels = " + str(in_channels))
-        print("out_channels = " + str(out_channels))
-        print("kernel_size = " + str(kernel_size))
-        self.conv2d_ = nn.Conv2d(in_channels, out_channels, kernel_size)
+        self.padding = padding
+        self.batch_size = batch_size
+        # Tensorflow API:
+        # input tensor of shape [batch, in_height, in_width, in_channels]
+        # filter / kernel tensor of shape 
+        # [filter_height, filter_width, in_channels, out_channels]
+        # filter_height = 1, filter_width = height, num_channels = in_channels, out_channels = filter_size
+        # Usage:
+        # xxc = tf.nn.conv2d(in_, filter_, strides, padding) + bias  # [N*M, JX, W/filter_stride, d]
+        # filter_ = tf.get_variable("filter", shape=[1, height, num_channels, filter_size], dtype='float')
+        # bias = tf.get_variable("bias", shape=[filter_size], dtype='float'
+
+        # Pytorch API:
+        # in_channels (int) – Number of channels in the input image
+        # out_channels (int) – Number of channels produced by the convolution
+        # kernel_size (int or tuple) – Size of the convolving kernel
+        # stride (int or tuple, optional) – Stride of the convolution. Default: 1
+        # padding (int or tuple, optional) – Zero-padding added to both sides of the input. Default: 0
+        # dilation (int or tuple, optional) – Spacing between kernel elements. Default: 1
+        # groups (int, optional) – Number of blocked connections from input channels to output channels. Default: 1
+        # bias (bool, optional) – If True, adds a learnable bias to the output. Default: True
+        self.conv2d_ = nn.Conv2d(in_channels, out_channels, (filter_height, filter_width), \
+                                    bias=True, padding=self.padding)
 
 
-    def forward(self, in_, padding):
-        num_channels = in_.size()[-1]
-        # default filter: kH, kW, in_channels, out_channels
-        # filter_ = Variable(Tensor(1, self.height, num_channels, self.filter_size))
-        # desired filter: in channels, out channels, kernel_size
-        bias_ = Variable(Tensor(self.out_channels)).type(dtype)
+    def forward(self, in_):
+        # TODO: check size of the filter
+
         if self.is_train is not None and self.keep_prob < 1.0:
             self.dropout_(in_)
-        print("in_ size = " + str(in_.size()))
-        # default in: batch, iH, iW, in_channels
-        # in: batch, in_channels, iH, iW
+        # tf: input tensor of shape [batch, in_height, in_width, in_channels]
+        # pt: input tensor of shape [batch, in_channels, in_height, in_width]
         t_in = in_.permute(0, 3, 1, 2)
         print("permuted_in_ size = " + str(t_in.size()))
         xxc = self.conv2d_(t_in)
-        out = torch.max(F.relu(xxc), 2)
+#        code.interact(local=locals())
+        out, argmax_out = torch.max(F.relu(xxc), 2)
+        return out
 
 
 class MultiConv1D(nn.Module):
-    def __init__(self, is_train, keep_prob):
+    def __init__(self, is_train, keep_prob, padding):
         super(MultiConv1D, self).__init__()
         self.is_train = is_train
         self.keep_prob = keep_prob
+        if padding == 'VALID':
+            self.padding = 0
+        elif padding == 'SAME':
+            self.padding = 0
+            print('Warning: don\'t now how to set for SAME padding')
 
 
     def forward(self, in_, filter_sizes, heights, padding):
@@ -92,14 +115,19 @@ class MultiConv1D(nn.Module):
             print("height = "+str(height))
             if filter_size == 0:
                 continue
-            num_channels = in_.size()[-1]
-            batch_size = in_.size()[0]
-            conv1d_layer = Conv1D(batch_size, num_channels, \
-                                  filter_size, (1, height), \
-                                  is_train=self.is_train, keep_prob=self.keep_prob)
-            out = conv1d_layer(in_, padding)
+            # in_ shape: batch, in_height, in_width, in_channels
+            batch_size, in_height, in_width, in_channels = in_.size()
+            filter_height = 1
+            filter_width = height
+            out_channels = filter_size
+            conv1d_layer = Conv1D(batch_size, in_channels, \
+                                  out_channels, filter_height, filter_width, \
+                                  is_train=self.is_train, keep_prob=self.keep_prob, \
+                                  padding=self.padding)
+            out = conv1d_layer(in_) 
             outs.append(out)
         concat_out = torch.cat(outs, 2)
+        return concat_out
 
 
 # TBA implemenations

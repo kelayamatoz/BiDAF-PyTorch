@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import logging
-import layers as L
+import bidaf.layers as L
 
 from torch.autograd import Variable
 from torch.nn import Embedding
@@ -30,7 +30,7 @@ class BiDAF(nn.Module):
                                            config.glove_vec_size)
         self.char_embed = Embedding(config.char_vocab_size, \
                                            config.char_emb_size)
-        self.multiconv_1d = L.MultiConv1D(config.is_train, config.keep_prob)
+        self.multiconv_1d = L.MultiConv1D(config.is_train, config.keep_prob, 'VALID')
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config
@@ -61,7 +61,7 @@ class BiDAF(nn.Module):
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
 
             print("conv")
-            xx = self.multiconv_1d(Acx, filter_sizes, heights, "VALID")
+            xx = self.multiconv_1d(Acx, filter_sizes, heights, 'VALID')
             print(xx.size())
         return None, None
 
@@ -198,13 +198,10 @@ if __name__ == '__main__':
 
     config.is_train = True
     model = BiDAF(config)
-<<<<<<< HEAD
+
     if torch.cuda.is_available():
         print("cuda is available")
         model.cuda()
-    model(*inputs)
-=======
-    model.cuda()
+
     inputs = [x, cx, x_mask, q, cq, q_mask, new_emb_mat]
     start, end = model(*inputs)
->>>>>>> 647cae21937bff826bb36ab57da5fa7d75c0aaa2
