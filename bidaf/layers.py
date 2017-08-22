@@ -44,7 +44,7 @@ def span_loss(config, q_mask, logits_start, start, logits_end, end):
 class Conv1D(nn.Module):
     def __init__(self, batch_size, in_channels, out_channels, kernel_size, is_train=None, keep_prob=0.8):
         super(Conv1D, self).__init__()
-        self.filter_size = filter_size
+        self.filter_size = out_channels
         self.height = height
         self.num_channels = num_channels
         self.is_train = is_train

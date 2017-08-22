@@ -42,9 +42,14 @@ class BiDAF(nn.Module):
         dc, dw, dco = config.char_emb_size, config.word_emb_size, config.char_out_size
         if config.use_char_emb:
             print("char")
-            cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1))).cuda()
+            if torch.cuda.is_available():
+                cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1))).cuda()
+                cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1))).cuda()
+            else:
+                cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1)))
+                cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1)))
+
             Acq = self.char_embed(Variable(cq_tensor))
-            cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1))).cuda()
             Acx = self.char_embed(Variable(cx_tensor))
             Acx = Acx.view(-1, JX, W, dc)
             Acq = Acq.view(-1, JQ, W, dc)
@@ -57,7 +62,7 @@ class BiDAF(nn.Module):
             xx = self.multiconv_1d(Acx, filter_sizes, heights, "VALID")
             print(xx.size())
         return None, None
-  
+
 
 if __name__ == '__main__':
     print("testing correctness of the model") 
