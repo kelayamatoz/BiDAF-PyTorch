@@ -65,21 +65,29 @@ class BiDAF(nn.Module):
                 cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1)))
                 cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1)))
 
-            Acq = self.char_embed(Variable(cq_tensor))
-            Acx = self.char_embed(Variable(cx_tensor))
-            Acx = Acx.view(-1, JX, W, dc)
-            Acq = Acq.view(-1, JQ, W, dc)
+            Acq_ = self.char_embed(Variable(cq_tensor))
+            Acx_ = self.char_embed(Variable(cx_tensor))
+            Acq = Acq_.view(-1, JQ, W, dc)
+            Acx = Acx_.view(-1, JX, W, dc)
 
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
 
             print("conv")
-            xx = self.multiconv_1d(Acx, filter_sizes, heights, PADDING)
+            xx_ = self.multiconv_1d(Acx, filter_sizes, heights, PADDING)
             if config.share_cnn_weights:
-                qq = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
+                qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
             else: 
-                qq = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
-            xx = xx.view(-1, M, JX, dco)
-            qq = qq.view(-1, JQ, dco)
+                qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
+            xx = xx_.view(-1, M, JX, dco)
+            qq = qq_.view(-1, JQ, dco)
+            print('Acx_ shape =', str(Acx_.size()))
+            print('Acq_ shape =', str(Acq_.size()))
+            print('Acx shape =', str(Acx.size()))
+            print('Acq shape =', str(Acq.size()))
+            print('xx shape =', str(xx.size()))
+            print('qq shape =', str(qq.size()))
+            print('xx_ shape =', str(xx_.size()))
+            print('qq_ shape =', str(qq_.size()))
 
         if config.use_word_emb:
             if config.mode == 'train':
@@ -96,14 +104,14 @@ class BiDAF(nn.Module):
 if __name__ == '__main__':
     print("testing correctness of the model")
     flags = ArgumentParser(description='Model Tester')
-    flags.add_argument("--max_num_sents", type=int, default=100)
-    flags.add_argument("--max_sent_size", type=int, default=50)
-    flags.add_argument("--max_ques_size", type=int, default=60)
-    flags.add_argument("--word_vocab_size", type=int, default=100)
-    flags.add_argument("--char_vocab_size", type=int, default=100)
-    flags.add_argument("--max_word_size", type=int, default=50)
+    flags.add_argument("--max_num_sents", type=int, default=1)
+    flags.add_argument("--max_sent_size", type=int, default=740)
+    flags.add_argument("--max_ques_size", type=int, default=36)
+    flags.add_argument("--word_vocab_size", type=int, default=1229)
+    flags.add_argument("--char_vocab_size", type=int, default=281)
+    flags.add_argument("--max_word_size", type=int, default=16)
     flags.add_argument("--glove_vec_size", type=int, default=100)
-    flags.add_argument("--word_emb_size", type=int, default=200)
+    flags.add_argument("--word_emb_size", type=int, default=100)
 
     flags.add_argument("--model_name", type=str, default="basic", help="Model name [basic]")
     flags.add_argument("--data_dir", type=str, default="data/squad", help="Data dir [data/squad]")
@@ -195,6 +203,9 @@ if __name__ == '__main__':
     flags.add_argument("--dynamic_att", type=bool, default=False, help="Dynamic attention [False]")
 
     config = flags.parse_args()
+
+    # Test with meta data from the first batch
+    config.max_sent_size = 161
 
     N, M, JX, JQ, VW, VC, d, W = \
     config.batch_size, config.max_num_sents, config.max_sent_size, \
