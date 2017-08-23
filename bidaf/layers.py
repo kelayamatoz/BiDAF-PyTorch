@@ -48,7 +48,9 @@ def span_loss(config, q_mask, logits_start, start, logits_end, end):
 
 
 class Conv1D(nn.Module):
-    def __init__(self, batch_size, in_channels, out_channels, filter_height, filter_width, is_train=None, keep_prob=0.8, padding=0):
+    def __init__(self, in_channels, out_channels, \
+                    filter_height, filter_width, is_train=None, \
+                    keep_prob=1.0, padding=0):
         super(Conv1D, self).__init__()
         self.out_channels = out_channels
         self.in_channels = in_channels
@@ -56,7 +58,6 @@ class Conv1D(nn.Module):
         self.keep_prob = keep_prob
         self.dropout_ = nn.Dropout(1. - keep_prob)
         self.padding = padding
-        self.batch_size = batch_size
         # Tensorflow API:
         # input tensor of shape [batch, in_height, in_width, in_channels]
         # filter / kernel tensor of shape 
@@ -90,25 +91,28 @@ class Conv1D(nn.Module):
         t_in = in_.permute(0, 3, 1, 2)
         print("permuted_in_ size = " + str(t_in.size()))
         xxc = self.conv2d_(t_in)
-#        code.interact(local=locals())
         out, argmax_out = torch.max(F.relu(xxc), 2)
         return out
 
 
 class MultiConv1D(nn.Module):
-    def __init__(self, is_train, keep_prob, padding):
+    def __init__(self, is_train, keep_prob):
         super(MultiConv1D, self).__init__()
         self.is_train = is_train
         self.keep_prob = keep_prob
-        if padding == 'VALID':
-            self.padding = 0
-        elif padding == 'SAME':
-            self.padding = 0
-            print('Warning: don\'t now how to set for SAME padding')
+        self.conv1d_list = nn.ModuleList()
 
 
     def forward(self, in_, filter_sizes, heights, padding):
         assert len(filter_sizes) == len(heights)
+        if padding == 'VALID':
+            padding_ = 0
+        elif padding == 'SAME':
+            padding_ = 0
+            print('Warning: don\'t now how to set for \'SAME\' padding')
+        else:
+            raise Exception('Exception: unknown padding'+padding)
+
         outs = []
         for filter_size, height in zip(filter_sizes, heights):
             print("filter_size = "+str(filter_size))
@@ -120,12 +124,13 @@ class MultiConv1D(nn.Module):
             filter_height = 1
             filter_width = height
             out_channels = filter_size
-            conv1d_layer = Conv1D(batch_size, in_channels, \
-                                  out_channels, filter_height, filter_width, \
-                                  is_train=self.is_train, keep_prob=self.keep_prob, \
-                                  padding=self.padding)
+            self.conv1d_list.append(Conv1D(in_channels, out_channels, filter_height, filter_width, \
+                                           is_train=self.is_train, keep_prob=self.keep_prob, padding=padding_))
+
+        for conv1d_layer in self.conv1d_list:
             out = conv1d_layer(in_) 
             outs.append(out)
+
         concat_out = torch.cat(outs, 2)
         return concat_out
 

@@ -2,22 +2,23 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
+import bidaf.layers as L
 import numpy as np
 import logging
-import bidaf.layers as L
+import code
 
+from numpy import genfromtxt
 from torch.autograd import Variable
 from torch.nn import Embedding
-from torch import zeros, from_numpy, Tensor
-from torch import LongTensor, FloatTensor
-
-
+from torch import zeros, from_numpy, Tensor, LongTensor, FloatTensor
 from argparse import ArgumentParser
 
 
-# dtype = torch.FloatTensor
 dtype = torch.cuda.FloatTensor
 ldtype = torch.cuda.LongTensor
+
+
+PADDING = 'VALID'
 
 
 class BiDAF(nn.Module):
@@ -30,18 +31,31 @@ class BiDAF(nn.Module):
                                            config.glove_vec_size)
         self.char_embed = Embedding(config.char_vocab_size, \
                                            config.char_emb_size)
-        self.multiconv_1d = L.MultiConv1D(config.is_train, config.keep_prob, 'VALID')
 
+        # char-level convs
+        filter_sizes = list(map(int, config.out_channel_dims.split(',')))
+        heights = list(map(int, config.filter_heights.split(',')))
+        self.filter_sizes = filter_sizes
+        self.heights = heights
+        self.multiconv_1d = L.MultiConv1D(config.is_train, config.keep_prob)
+        self.multiconv_1d_qq = L.MultiConv1D(config.is_train, config.keep_prob)
+        
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config
         N, M, JX, JQ, VW, VC, W = \
             config.batch_size, config.max_num_sents, config.max_sent_size, \
-            config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.max_word_size
+            config.max_ques_size, config.word_vocab_size, config.char_vocab_size, \
+            config.max_word_size
         JX = x.shape[2]
         JQ = q.shape[1]
         M = x.shape[1]
 
+        filter_sizes = self.filter_sizes
+        heights = self.heights
         dc, dw, dco = config.char_emb_size, config.word_emb_size, config.char_out_size
+
+        # Char Embedding Layer
+        # TODO: Send this part to the layers.py
         if config.use_char_emb:
             print("char")
             if torch.cuda.is_available():
@@ -56,13 +70,26 @@ class BiDAF(nn.Module):
             Acx = Acx.view(-1, JX, W, dc)
             Acq = Acq.view(-1, JQ, W, dc)
 
-            filter_sizes = list(map(int, config.out_channel_dims.split(',')))
-            heights = list(map(int, config.filter_heights.split(',')))
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
 
             print("conv")
-            xx = self.multiconv_1d(Acx, filter_sizes, heights, 'VALID')
-            print(xx.size())
+            xx = self.multiconv_1d(Acx, filter_sizes, heights, PADDING)
+            if config.share_cnn_weights:
+                qq = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
+            else: 
+                qq = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
+            xx = xx.view(-1, M, JX, dco)
+            qq = qq.view(-1, JQ, dco)
+
+        if config.use_word_emb:
+            if config.mode == 'train':
+                word_emb_mat = Variable(Tensor(config.emb_mat))
+                print('checking size')
+                print('desired shape = '+str(Vw) + ' ' + str(dw))
+                print('actual shape = '+str(config.emb_mat.shape))
+                exit()
+
+
         return None, None
 
 
@@ -93,7 +120,7 @@ if __name__ == '__main__':
     flags.add_argument("--num_gpus", type=int, default=1, help="num of gpus or cpus for computing gradients [1]")
 
     # Essential training and test options
-    flags.add_argument("--mode", type=str, default="test", help="train | test | forward [test]")
+    flags.add_argument("--mode", type=str, default="train", help="train | test | forward [test]")
     flags.add_argument("--load", type=bool, default=True, help="load saved data? [True]")
     flags.add_argument("--single", type=bool, default=False, help="supervise only the answer sentence? [False]")
     flags.add_argument("--debug", default=False, action="store_true", help="Debugging mode? [False]")
@@ -169,11 +196,11 @@ if __name__ == '__main__':
 
     config = flags.parse_args()
 
-
-
     N, M, JX, JQ, VW, VC, d, W = \
     config.batch_size, config.max_num_sents, config.max_sent_size, \
     config.max_ques_size, config.word_vocab_size, config.char_vocab_size, config.hidden_size, config.max_word_size
+
+    config.emb_mat = genfromtxt('emb_mat.csv', delimiter=',')
 
     print(" >>>>>>>>>> DIMENSIONS <<<<<<<<<< ")
     print('N = ' + str(N))
