@@ -65,10 +65,11 @@ class BiDAF(nn.Module):
                 cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1)))
                 cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1)))
 
-            Acq_ = self.char_embed(Variable(cq_tensor))
-            Acx_ = self.char_embed(Variable(cx_tensor))
-            Acq = Acq_.view(-1, JQ, W, dc)
+
+            Acx_ = self.char_embed(Variable(cx_tensor)).view(N, M, JX, W, dc)
             Acx = Acx_.view(-1, JX, W, dc)
+            Acq_ = self.char_embed(Variable(cq_tensor)).view(N, JQ, W, dc)
+            Acq = Acq_.view(-1, JQ, W, dc)
 
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
 
@@ -78,16 +79,17 @@ class BiDAF(nn.Module):
                 qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
             else: 
                 qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
-            xx = xx_.view(-1, M, JX, dco)
-            qq = qq_.view(-1, JQ, dco)
+            print('cx shape = ', str(cx_tensor.size()))
+            print('cq shape = ', str(cq_tensor.size()))
             print('Acx_ shape =', str(Acx_.size()))
             print('Acq_ shape =', str(Acq_.size()))
             print('Acx shape =', str(Acx.size()))
             print('Acq shape =', str(Acq.size()))
-            print('xx shape =', str(xx.size()))
-            print('qq shape =', str(qq.size()))
             print('xx_ shape =', str(xx_.size()))
             print('qq_ shape =', str(qq_.size()))
+            xx = xx_.view(-1, M, JX, dco)
+            qq = qq_.view(-1, JQ, dco)
+
 
         if config.use_word_emb:
             if config.mode == 'train':
