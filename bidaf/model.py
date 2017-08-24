@@ -94,7 +94,7 @@ class BiDAF(nn.Module):
             Acq_ = self.char_embed(Variable(self.cq)).view(N, JQ, W, dc)
             Acq = Acq_.view(-1, JQ, W, dc)
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
-
+            print('Acq shape: ', Acq.size())
             print('>>>>>>>>>> conv <<<<<<<<<<')
             xx_ = self.multiconv_1d(Acx, filter_sizes, heights, PADDING)
             if config.share_cnn_weights:
@@ -102,6 +102,7 @@ class BiDAF(nn.Module):
             else: 
                 qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
             xx = xx_.view(-1, M, JX, dco)
+            print('qq_ size: ', qq_.size())
             qq = qq_.view(-1, JQ, dco)
 
             print('xx shape = ', str(xx.size()))
@@ -123,8 +124,12 @@ class BiDAF(nn.Module):
             # TODO: Do we need a tensor dict to store all of these things? 
 
         if config.use_char_emb:
+            print('xx size', xx.size())
+            print('Ax size', Ax.size())
             xx = torch.cat((xx, Ax), 3)
-            qq = torch.cat((qq, Aq), 3)
+            print('qq size', qq.size())
+            print('Aq size', Aq.size())
+            qq = torch.cat((qq, Aq), 2)
         else:
             xx = Ax
             qq = Aq
