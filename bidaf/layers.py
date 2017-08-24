@@ -58,6 +58,7 @@ class Conv1D(nn.Module):
         self.keep_prob = keep_prob
         self.dropout_ = nn.Dropout(1. - keep_prob)
         self.padding = padding
+        self.kernel_size = (filter_height, filter_width)
         # Tensorflow API:
         # input tensor of shape [batch, in_height, in_width, in_channels]
         # filter / kernel tensor of shape 
@@ -77,8 +78,9 @@ class Conv1D(nn.Module):
         # dilation (int or tuple, optional) – Spacing between kernel elements. Default: 1
         # groups (int, optional) – Number of blocked connections from input channels to output channels. Default: 1
         # bias (bool, optional) – If True, adds a learnable bias to the output. Default: True
-        self.conv2d_ = nn.Conv2d(in_channels, out_channels, (filter_height, filter_width), \
-                                    bias=True, dilation=0, padding=self.padding)
+        print((filter_height, filter_width))
+        self.conv2d_ = nn.Conv2d(self.in_channels, self.out_channels, self.kernel_size, \
+                                    bias=True, padding=self.padding)
 
 
     def forward(self, in_):
@@ -90,7 +92,14 @@ class Conv1D(nn.Module):
         print("permuted_in_ size = " + str(t_in.size()))
         print('t_in shape = ', str(t_in.size()))
         xxc = self.conv2d_(t_in)
-        print('xxc shape = ', str(xxc.size()))
+        # use desired inputs from pt to produce size information
+        # Hout=floor((Hin+2∗padding[0]−dilation[0]∗(kernel_size[0]−1)−1)/stride[0]+1)
+        # Wout=floor((Win+2∗padding[1]−dilation[1]∗(kernel_size[1]−1)−1)/stride[1]+1)
+        n, c_in, h_in, w_in = t_in.size()
+        kernel_size_0, kernel_size_1 = self.kernel_size
+        d_Height = (h_in + 2 * 0. - 0. * (kernel_size_0 - 1) - 1) / 1 + 1
+        d_Width = (w_in + 2 * 0. - 0. * (kernel_size_1 - 1) - 1) / 1 + 1
+        print('xxc shape = ', str(xxc.size()), ', desired height = ', str(d_Height), ', desired width = ', str(d_Width))
         out, argmax_out = torch.max(F.relu(xxc), 2)
         return out
 
