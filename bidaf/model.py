@@ -75,20 +75,20 @@ class BiDAF(nn.Module):
 
             print("conv")
             xx_ = self.multiconv_1d(Acx, filter_sizes, heights, PADDING)
-            if config.share_cnn_weights:
-                qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
-            else: 
-                qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
-            print('cx shape = ', str(cx_tensor.size()))
-            print('cq shape = ', str(cq_tensor.size()))
-            print('Acx_ shape =', str(Acx_.size()))
-            print('Acq_ shape =', str(Acq_.size()))
-            print('Acx shape =', str(Acx.size()))
-            print('Acq shape =', str(Acq.size()))
-            print('xx_ shape =', str(xx_.size()))
-            print('qq_ shape =', str(qq_.size()))
+            # if config.share_cnn_weights:
+            #     qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
+            # else: 
+            #     qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
+            # print('cx shape = ', str(cx_tensor.size()))
+            # print('cq shape = ', str(cq_tensor.size()))
+            # print('Acx_ shape = ', str(Acx_.size()))
+            # print('Acq_ shape = ', str(Acq_.size()))
+            # print('Acx shape = ', str(Acx.size()))
+            # print('Acq shape = ', str(Acq.size()))
+            print('xx_ shape = ', str(xx_.size()))
+            # print('qq_ shape = ', str(qq_.size()))
             xx = xx_.view(-1, M, JX, dco)
-            qq = qq_.view(-1, JQ, dco)
+            # qq = qq_.view(-1, JQ, dco)
 
 
         if config.use_word_emb:

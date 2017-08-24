@@ -78,19 +78,19 @@ class Conv1D(nn.Module):
         # groups (int, optional) – Number of blocked connections from input channels to output channels. Default: 1
         # bias (bool, optional) – If True, adds a learnable bias to the output. Default: True
         self.conv2d_ = nn.Conv2d(in_channels, out_channels, (filter_height, filter_width), \
-                                    bias=True, padding=self.padding)
+                                    bias=True, dilation=0, padding=self.padding)
 
 
     def forward(self, in_):
-        # TODO: check size of the filter
-
         if self.is_train is not None and self.keep_prob < 1.0:
             self.dropout_(in_)
         # tf: input tensor of shape [batch, in_height, in_width, in_channels]
         # pt: input tensor of shape [batch, in_channels, in_height, in_width]
         t_in = in_.permute(0, 3, 1, 2)
         print("permuted_in_ size = " + str(t_in.size()))
+        print('t_in shape = ', str(t_in.size()))
         xxc = self.conv2d_(t_in)
+        print('xxc shape = ', str(xxc.size()))
         out, argmax_out = torch.max(F.relu(xxc), 2)
         return out
 
@@ -127,6 +127,7 @@ class MultiConv1D(nn.Module):
             self.conv1d_list.append(Conv1D(in_channels, out_channels, filter_height, filter_width, \
                                            is_train=self.is_train, keep_prob=self.keep_prob, padding=padding_))
 
+        print('>>>>>>>>>> in_ shape = ', str(in_.size()))
         for conv1d_layer in self.conv1d_list:
             out = conv1d_layer(in_) 
             outs.append(out)
