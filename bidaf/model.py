@@ -14,8 +14,10 @@ from torch import zeros, from_numpy, Tensor, LongTensor, FloatTensor
 from argparse import ArgumentParser
 
 
-dtype = torch.cuda.FloatTensor
-ldtype = torch.cuda.LongTensor
+dtype = torch.FloatTensor
+ldtype = torch.LongTensor
+# dtype = torch.cuda.FloatTensor
+# ldtype = torch.cuda.LongTensor
 
 
 PADDING = 'VALID'
@@ -42,6 +44,9 @@ class BiDAF(nn.Module):
         
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config
+        filter_sizes = self.filter_sizes
+        heights = self.heights
+
         N, M, JX, JQ, VW, VC, W = \
             config.batch_size, config.max_num_sents, config.max_sent_size, \
             config.max_ques_size, config.word_vocab_size, config.char_vocab_size, \
@@ -49,56 +54,82 @@ class BiDAF(nn.Module):
         JX = x.shape[2]
         JQ = q.shape[1]
         M = x.shape[1]
-
-        filter_sizes = self.filter_sizes
-        heights = self.heights
         dc, dw, dco = config.char_emb_size, config.word_emb_size, config.char_out_size
+
+        def get_long_tensor(np_tensor):
+            if torch.cuda.is_available():
+                return LongTensor(from_numpy(np_tensor)).cuda()
+            else:
+                return LongTensor(from_numpy(np_tensor))
+
+        self.x = get_long_tensor(x.reshape(N, -1)) 
+        self.cx = get_long_tensor(cx.reshape(N, -1))
+        # TODO: Do we need a bool tensor? 
+        # self.x_mask = get_long_tensor(x_mask)
+        # self.q_mask = get_long_tensor(q_mask)
+        self.q = get_long_tensor(q.reshape(N, -1))
+        self.cq = get_long_tensor(cq.reshape(N, -1))
+        self.new_emb_mat = Tensor(new_emb_mat).type(dtype) 
+
 
         # Char Embedding Layer
         # TODO: Send this part to the layers.py
         if config.use_char_emb:
-            print("char")
-            if torch.cuda.is_available():
-                cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1))).cuda()
-                cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1))).cuda()
-            else:
-                cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1)))
-                cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1)))
+            print('>>>>>>>>>> char <<<<<<<<<<')
+            # if torch.cuda.is_available():
+            #     cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1))).cuda()
+            #     cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1))).cuda()
+            # else:
+            #     # cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1)))
+            #     # cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1)))
 
+            '''
+                Warning: currently, embedding only looks up 2-D inputs. To make 
+                the embedding work as expected, I needed to flatten it first and 
+                reshape it after going through the embedding layer.
+            '''
 
-            Acx_ = self.char_embed(Variable(cx_tensor)).view(N, M, JX, W, dc)
+            Acx_ = self.char_embed(Variable(self.cx)).view(N, M, JX, W, dc)
             Acx = Acx_.view(-1, JX, W, dc)
-            Acq_ = self.char_embed(Variable(cq_tensor)).view(N, JQ, W, dc)
+            Acq_ = self.char_embed(Variable(self.cq)).view(N, JQ, W, dc)
             Acq = Acq_.view(-1, JQ, W, dc)
-
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
 
-            print("conv")
+            print('>>>>>>>>>> conv <<<<<<<<<<')
             xx_ = self.multiconv_1d(Acx, filter_sizes, heights, PADDING)
-            # if config.share_cnn_weights:
-            #     qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
-            # else: 
-            #     qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
-            # print('cx shape = ', str(cx_tensor.size()))
-            # print('cq shape = ', str(cq_tensor.size()))
-            # print('Acx_ shape = ', str(Acx_.size()))
-            # print('Acq_ shape = ', str(Acq_.size()))
-            # print('Acx shape = ', str(Acx.size()))
-            # print('Acq shape = ', str(Acq.size()))
-            print('xx_ shape = ', str(xx_.size()))
-            # print('qq_ shape = ', str(qq_.size()))
+            if config.share_cnn_weights:
+                qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
+            else: 
+                qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
             xx = xx_.view(-1, M, JX, dco)
-            # qq = qq_.view(-1, JQ, dco)
+            qq = qq_.view(-1, JQ, dco)
 
+            print('xx shape = ', str(xx.size()))
+            print('qq shape = ', str(qq.size()))
 
         if config.use_word_emb:
+            print('>>>>>>>>>> word <<<<<<<<<<') 
             if config.mode == 'train':
                 word_emb_mat = Variable(Tensor(config.emb_mat))
-                print('checking size')
-                print('desired shape = '+str(Vw) + ' ' + str(dw))
-                print('actual shape = '+str(config.emb_mat.shape))
-                exit()
+            else:
+                word_emb_mat = Variable(Tensor(Vw, dw).type(dtype))
+            if config.use_glove_for_unk:
+                word_emb_mat = torch.cat((word_emb_mat, self.new_emb_mat), 1)
 
+            Ax = self.word_embed(Variable(self.x)).view(N, M, JX, d)
+            Aq = self.word_embed(Variable(self.q)).view(N, JQ, d)
+            print(Ax.size(), N, M, JX, d)
+            print(Aq.size(), N, JQ, d)
+            # TODO: Do we need a tensor dict to store all of these things? 
+
+        if config.use_char_emb:
+            xx = torch.cat((xx, Ax), 3)
+            qq = torch.cat((qq, Aq), 3)
+        else:
+            xx = Ax
+            qq = Aq
+
+        # Highway network
 
         return None, None
 
@@ -208,6 +239,7 @@ if __name__ == '__main__':
 
     # Test with meta data from the first batch
     config.max_sent_size = 161
+    config.max_ques_size = 20
 
     N, M, JX, JQ, VW, VC, d, W = \
     config.batch_size, config.max_num_sents, config.max_sent_size, \
