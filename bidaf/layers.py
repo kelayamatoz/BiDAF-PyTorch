@@ -59,6 +59,8 @@ class Conv1D(nn.Module):
         self.dropout_ = nn.Dropout(1. - keep_prob)
         self.padding = padding
         self.kernel_size = (filter_height, filter_width)
+        self.filter_height = filter_height
+        self.filter_width = filter_width
         # Tensorflow API:
         # input tensor of shape [batch, in_height, in_width, in_channels]
         # filter / kernel tensor of shape 
@@ -79,8 +81,9 @@ class Conv1D(nn.Module):
         # groups (int, optional) – Number of blocked connections from input channels to output channels. Default: 1
         # bias (bool, optional) – If True, adds a learnable bias to the output. Default: True
         print((filter_height, filter_width))
-        self.conv2d_ = nn.Conv2d(self.in_channels, self.out_channels, self.kernel_size, \
-                                    bias=True, padding=self.padding)
+        # self.conv2d_ = nn.Conv2d(self.in_channels, self.out_channels, self.kernel_size, \
+        #                             bias=True, padding=self.padding)
+
 
 
     def forward(self, in_):
@@ -89,9 +92,11 @@ class Conv1D(nn.Module):
         # tf: input tensor of shape [batch, in_height, in_width, in_channels]
         # pt: input tensor of shape [batch, in_channels, in_height, in_width]
         t_in = in_.permute(0, 3, 1, 2)
+        filter_ = Variable(torch.zeros(self.out_channels, self.in_channels, self.filter_height, self.filter_width))
         print("permuted_in_ size = " + str(t_in.size()))
         print('t_in shape = ', str(t_in.size()))
-        xxc = self.conv2d_(t_in)
+        # xxc = self.conv2d_(t_in)
+        xxc = F.conv2d(t_in, filter_)
         # use desired inputs from pt to produce size information
         # Hout=floor((Hin+2∗padding[0]−dilation[0]∗(kernel_size[0]−1)−1)/stride[0]+1)
         # Wout=floor((Win+2∗padding[1]−dilation[1]∗(kernel_size[1]−1)−1)/stride[1]+1)
