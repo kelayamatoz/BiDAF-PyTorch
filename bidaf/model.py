@@ -76,13 +76,6 @@ class BiDAF(nn.Module):
         # TODO: Send this part to the layers.py
         if config.use_char_emb:
             print('>>>>>>>>>> char <<<<<<<<<<')
-            # if torch.cuda.is_available():
-            #     cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1))).cuda()
-            #     cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1))).cuda()
-            # else:
-            #     # cq_tensor = LongTensor(from_numpy(cq.reshape(N, -1)))
-            #     # cx_tensor = LongTensor(from_numpy(cx.reshape(N, -1)))
-
             '''
                 Warning: currently, embedding only looks up 2-D inputs. To make 
                 the embedding work as expected, I needed to flatten it first and 
@@ -94,19 +87,15 @@ class BiDAF(nn.Module):
             Acq_ = self.char_embed(Variable(self.cq)).view(N, JQ, W, dc)
             Acq = Acq_.view(-1, JQ, W, dc)
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
-            print('Acq shape: ', Acq.size())
             print('>>>>>>>>>> conv <<<<<<<<<<')
             xx_ = self.multiconv_1d(Acx, filter_sizes, heights, PADDING)
             if config.share_cnn_weights:
-                qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING)
+                qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING, is_shared=True)
             else: 
                 qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
             xx = xx_.view(-1, M, JX, dco)
             print('qq_ size: ', qq_.size())
             qq = qq_.view(-1, JQ, dco)
-
-            print('xx shape = ', str(xx.size()))
-            print('qq shape = ', str(qq.size()))
 
         if config.use_word_emb:
             print('>>>>>>>>>> word <<<<<<<<<<') 
@@ -124,17 +113,15 @@ class BiDAF(nn.Module):
             # TODO: Do we need a tensor dict to store all of these things? 
 
         if config.use_char_emb:
-            print('xx size', xx.size())
-            print('Ax size', Ax.size())
             xx = torch.cat((xx, Ax), 3)
-            print('qq size', qq.size())
-            print('Aq size', Aq.size())
             qq = torch.cat((qq, Aq), 2)
         else:
             xx = Ax
             qq = Aq
 
         # Highway network
+        if config.highway:
+            print('>>>>>>>>>> highway <<<<<<<<<<') 
 
         return None, None
 

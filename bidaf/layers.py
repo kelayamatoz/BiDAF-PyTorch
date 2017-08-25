@@ -64,26 +64,12 @@ class Conv1D(nn.Module):
     def forward(self, in_):
         if self.is_train is not None and self.keep_prob < 1.0:
             self.dropout_(in_)
-        # tf: input tensor of shape [batch, in_height, in_width, in_channels]
-        # pt: input tensor of shape [batch, in_channels, in_height, in_width]
+        '''
+        tf: input tensor of shape [batch, in_height, in_width, in_channels]
+        pt: input tensor of shape [batch, in_channels, in_height, in_width]
+        '''
         t_in = in_.permute(0, 3, 1, 2)
-        # print("permuted_in_ size = " + str(t_in.size()))
-        # print('t_in shape = ', str(t_in.size()))
         xxc = self.conv2d_(t_in)
-        # print('----------')
-        # print(t_in.size())
-        # print(filter_.size())
-        # n, c_in, h_in, w_in = t_in.size()
-        # kernel_size_0, kernel_size_1 = self.kernel_size
-        # Hout=floor((Hin+2∗padding[0]−dilation[0]∗(kernel_size[0]−1)−1)/stride[0]+1)
-        # Wout=floor((Win+2∗padding[1]−dilation[1]∗(kernel_size[1]−1)−1)/stride[1]+1)
-        # d_Height = (h_in + 2 * 0. - 0. * (kernel_size_0 - 1) - 1) / 1 + 1
-        # d_Width = (w_in + 2 * 0. - 0. * (kernel_size_1 - 1) - 1) / 1 + 1
-        # print('xxc shape = ', str(xxc.size()), ', desired height = ', str(d_Height), ', desired width = ', str(d_Width))
-        # print('----------')
-
-        # use desired inputs from pt to produce size information
-        # print('')
         out, argmax_out = torch.max(F.relu(xxc), -1)
         return out
 
@@ -96,7 +82,7 @@ class MultiConv1D(nn.Module):
         self.conv1d_list = nn.ModuleList()
 
 
-    def forward(self, in_, filter_sizes, heights, padding):
+    def forward(self, in_, filter_sizes, heights, padding, is_shared=False):
         assert len(filter_sizes) == len(heights)
         if padding == 'VALID':
             padding_ = 0
@@ -107,7 +93,7 @@ class MultiConv1D(nn.Module):
             raise Exception('Exception: unknown padding'+padding)
 
         outs = []
-        for filter_size, height in zip(filter_sizes, heights):
+        for idx, (filter_size, height) in enumerate(zip(filter_sizes, heights)):
             print("filter_size = "+str(filter_size))
             print("height = "+str(height))
             if filter_size == 0:
@@ -117,8 +103,13 @@ class MultiConv1D(nn.Module):
             filter_height = 1
             filter_width = height
             out_channels = filter_size
-            self.conv1d_list.append(Conv1D(in_channels, out_channels, filter_height, filter_width, \
-                                           is_train=self.is_train, keep_prob=self.keep_prob, padding=padding_))
+            '''
+            Comment: Pytorch doesn't support reusable variables. However, we can reuse these
+            variables by passing data through the same layers.
+            '''
+            if not is_shared:
+                self.conv1d_list.append(Conv1D(in_channels, out_channels, filter_height, filter_width, \
+                                                    is_train=self.is_train, keep_prob=self.keep_prob, padding=padding_))
 
         for conv1d_layer in self.conv1d_list:
             out = conv1d_layer(in_) 
