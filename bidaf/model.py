@@ -1,4 +1,5 @@
 import torch
+
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
@@ -139,7 +140,8 @@ class BiDAF(nn.Module):
             qq = self.highway(qq)
             print('xx size = ', xx.size())
             print('qq size = ', qq.size())
-             
+
+
         return None, None
 
 
