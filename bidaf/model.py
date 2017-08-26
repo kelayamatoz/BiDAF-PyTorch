@@ -29,6 +29,7 @@ class BiDAF(nn.Module):
         self.config = config
         self.logits = None
         self.yp = None
+        self.dc, self.dw, self.dco = config.char_emb_size, config.word_emb_size, config.char_out_size
         self.word_embed = Embedding(config.word_vocab_size, \
                                            config.glove_vec_size)
         self.char_embed = Embedding(config.char_vocab_size, \
@@ -41,11 +42,20 @@ class BiDAF(nn.Module):
         self.heights = heights
         self.multiconv_1d = L.MultiConv1D(config.is_train, config.keep_prob)
         self.multiconv_1d_qq = L.MultiConv1D(config.is_train, config.keep_prob)
+        if config.use_char_emb:
+            highway_outsize = self.dco + self.dw
+        else:
+            highway_outsize = self.dw
+        self.highway = L.HighwayNet(config.highway_num_layers, highway_outsize)
+        # self.highway_qq = L.HighwayNet(config.highway_num_layers, highway_outsize)
         
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config
         filter_sizes = self.filter_sizes
         heights = self.heights
+        dc = self.dc
+        dw = self.dw
+        dco = self.dco
 
         N, M, JX, JQ, VW, VC, W = \
             config.batch_size, config.max_num_sents, config.max_sent_size, \
@@ -54,7 +64,6 @@ class BiDAF(nn.Module):
         JX = x.shape[2]
         JQ = q.shape[1]
         M = x.shape[1]
-        dc, dw, dco = config.char_emb_size, config.word_emb_size, config.char_out_size
 
         def get_long_tensor(np_tensor):
             if torch.cuda.is_available():
@@ -70,8 +79,7 @@ class BiDAF(nn.Module):
         self.q = get_long_tensor(q.reshape(N, -1))
         self.cq = get_long_tensor(cq.reshape(N, -1))
         self.new_emb_mat = Tensor(new_emb_mat).type(dtype) 
-
-
+        
         # Char Embedding Layer
         # TODO: Send this part to the layers.py
         if config.use_char_emb:
@@ -106,10 +114,11 @@ class BiDAF(nn.Module):
             if config.use_glove_for_unk:
                 word_emb_mat = torch.cat((word_emb_mat, self.new_emb_mat), 1)
 
-            Ax = self.word_embed(Variable(self.x)).view(N, M, JX, d)
-            Aq = self.word_embed(Variable(self.q)).view(N, JQ, d)
-            print(Ax.size(), N, M, JX, d)
-            print(Aq.size(), N, JQ, d)
+            print('d = ', d)
+            Ax = self.word_embed(Variable(self.x)).view(N, M, JX, dw)
+            Aq = self.word_embed(Variable(self.q)).view(N, JQ, dw)
+            print(Ax.size(), N, M, JX, dw)
+            print(Aq.size(), N, JQ, dw)
             # TODO: Do we need a tensor dict to store all of these things? 
 
         if config.use_char_emb:
@@ -122,7 +131,15 @@ class BiDAF(nn.Module):
         # Highway network
         if config.highway:
             print('>>>>>>>>>> highway <<<<<<<<<<') 
-
+            '''
+            Warning: From the original tf implementation, it seems that xx and qq 
+            are passed through the same highway network
+            '''
+            xx = self.highway(xx)
+            qq = self.highway(qq)
+            print('xx size = ', xx.size())
+            print('qq size = ', qq.size())
+             
         return None, None
 
 

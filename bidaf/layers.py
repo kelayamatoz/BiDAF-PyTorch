@@ -32,11 +32,6 @@ def softmax3d(input, xd, yd):
     return out
 
 
-def reduce_max(input_tensor, axis):
-    _, values = input_tensor.max(axis)
-    return values
-
-
 def span_loss(config, q_mask, logits_start, start, logits_end, end):
     size = config.max_num_sents * config.max_sent_size
     loss_mask = reduce_mask(q_mask, 1)
@@ -119,8 +114,8 @@ class MultiConv1D(nn.Module):
         return concat_out
 
 
-# TBA implemenations
 class HighwayLayer(nn.Module):
+    # TODO: We may need to add weight decay here
     def __init__(self, size, bias_init=0.0, nonlin=nn.ReLU(inplace=True), gate_nonlin=F.sigmoid):
         super(HighwayLayer, self).__init__()
 
@@ -131,42 +126,16 @@ class HighwayLayer(nn.Module):
         self.gate_lin.bias.data.fill_(bias_init)
 
     def forward(self, x):
-        out = self.nonlin(self.lin(x))
-        gate_out = self.gate_nonlin(self.gate_lin(x))
-        prod = torch.mul(out, gate_out)
-        resid = torch.mul((1-gate_out), x)
-        return torch.add(prod, resid)
+        trans = self.nonlin(self.lin(x))
+        gate = self.gate_nonlin(self.gate_lin(x))
+        return torch.add(torch.mul(gate, trans), torch.mul((1 - gate), x))
 
 
 class HighwayNet(nn.Module):
-    def __init__(self, size, depth):
+    def __init__(self, depth, size):
         super(HighwayNet, self).__init__()
         layers = [HighwayLayer(size) for _ in range(depth)]
         self.main = nn.Sequential(*layers)
-
-    def forward(self, x):
-        return self.main(x)
-
-
-class Conv1dMax(nn.Module):
-    def __init__(self, in_chan, out_chan, width, do_p=0.5):
-        self.do = nn.Dropout(do_p)
-        self.conv = nn.Conv2d(in_chan, out_chan, kernel_size=[1, width])
-        self.relu = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-        out = self.relu(self.conv(self.do(x)))
-        _, out = torch.max(out, 2)
-        return out
-
-
-class Conv1dN(nn.Module):
-    def __init__(self, nchan, filter_sizes, filter_heights, do_p):
-        super(Conv1dN, self).__init__()
-
-        conv_layers = [Conv1dMax(nchan, size, height, do_p)
-                       for size, height in zip(filter_size, filter_heights)]
-        self.main = nn.Sequential(*conv_layers)
 
     def forward(self, x):
         return self.main(x)
@@ -197,6 +166,7 @@ class Linear(LinearBase):
         return exp_mask(out, mask)
 
 
+# TBA implemenations
 class TriLinear(LinearBase):
     def forward(self, a, b, mask):
         shape, a_, b_ = super(self).forward(a, b, mask)
