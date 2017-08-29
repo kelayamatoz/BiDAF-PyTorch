@@ -1,5 +1,4 @@
 import torch
-
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,6 +30,10 @@ class BiDAF(nn.Module):
         self.logits = None
         self.yp = None
         self.dc, self.dw, self.dco = config.char_emb_size, config.word_emb_size, config.char_out_size
+        self.N, self.M, self.JX, self.JQ, self.VW, self.VC, self.d, self.W = \
+            config.batch_size, config.max_num_sents, config.max_sent_size, \
+            config.max_ques_size, config.word_vocab_size, config.char_vocab_size, \
+            config.hidden_size, config.max_word_size
         self.word_embed = Embedding(config.word_vocab_size, \
                                            config.glove_vec_size)
         self.char_embed = Embedding(config.char_vocab_size, \
@@ -49,7 +52,10 @@ class BiDAF(nn.Module):
             highway_outsize = self.dw
         self.highway = L.HighwayNet(config.highway_num_layers, highway_outsize)
         # self.highway_qq = L.HighwayNet(config.highway_num_layers, highway_outsize)
-        
+       
+        # TODO: Attention layers: 
+        self.prepro = L.BiEncoder(config, )
+
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config
         filter_sizes = self.filter_sizes
@@ -57,11 +63,12 @@ class BiDAF(nn.Module):
         dc = self.dc
         dw = self.dw
         dco = self.dco
+        N = self.N
+        VW = self.VW
+        VC = self.VC
+        d = self.d
+        W = self.W
 
-        N, M, JX, JQ, VW, VC, W = \
-            config.batch_size, config.max_num_sents, config.max_sent_size, \
-            config.max_ques_size, config.word_vocab_size, config.char_vocab_size, \
-            config.max_word_size
         JX = x.shape[2]
         JQ = q.shape[1]
         M = x.shape[1]
@@ -134,12 +141,19 @@ class BiDAF(nn.Module):
             print('>>>>>>>>>> highway <<<<<<<<<<') 
             '''
             Warning: From the original tf implementation, it seems that xx and qq 
-            are passed through the same highway network
+            go through the same highway network
             '''
             xx = self.highway(xx)
             qq = self.highway(qq)
             print('xx size = ', xx.size())
             print('qq size = ', qq.size())
+
+        '''
+        Warning: In tensorflow, the weights in LSTM are combined together into 
+        a bigger matrix and then pass through the RNN. 
+        TODO: This could possibly be an optimization in spatial LSTM implementation 
+        '''
+                 
 
 
         return None, None
