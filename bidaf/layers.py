@@ -194,8 +194,9 @@ class BiEncoder(nn.Module):
     def __init__(self, config, input_size):
         super(Encoder, self).__init__()
         self.config = config
-        self.rnn = nn.LSTM(input_size=input_size, hidden_size=config.,
-                           num_layers=config.n_layers, dropout=(1 - config.input_keep_prob),
+        self.rnn = nn.LSTM(input_size=input_size, hidden_size=config.hidden_size,
+                           num_layers=config.lstm_layers, batch_first=config.batch_first, 
+                           dropout=(1 - config.input_keep_prob),
                            bidirectional=True)
 
     def forward(self, inputs):

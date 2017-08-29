@@ -132,8 +132,12 @@ class MultiGPUTrainer(object):
 
         new_emb_mat = batch.shared['new_emb_mat']
         inputs = [x, cx, x_mask, q, cq, q_mask, new_emb_mat]
-
-        m_start, m_end = self.model(*inputs)
+        print("Checking JX and JQ")
+        JX_x = x.shape[2]
+        JQ_q = q.shape[1]
+        M_x = x.shape[1]
+        print('JX = ', str(JX), ', JX_x = ', str(JX_x), ', JQ = ', str(JQ), ', JQ_q = ', str(JQ_q), ', M = ', str(M), ', M_x = ', str(M_x))
+        # m_start, m_end = self.model(*inputs)
 
         # calcualte loss
         loss_mask = np.amax(q_mask.astype(float), 1) 

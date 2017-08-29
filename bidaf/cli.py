@@ -51,6 +51,8 @@ def get_args():
     flags.add_argument("--share_cnn_weights", type=bool, default=True, help="Share Char-CNN weights [True]")
     flags.add_argument("--share_lstm_weights", type=bool, default=True, help="Share pre-processing (phrase-level) LSTM weights [True]")
     flags.add_argument("--var_decay", type=float, default=0.999, help="Exponential moving average decay for variables [0.999]")
+    flags.add_argument("--lstm_layers", type=int, default=1, help="Number of LSTM layers")
+    flags.add_argument("--batch_first", type=bool, default=True, help="LSTM order: (batch, seq, feature)")
 
     # Optimizations
     flags.add_argument("--cluster", type=bool, default=False, help="Cluster data for faster training [False]")

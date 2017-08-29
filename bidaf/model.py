@@ -51,10 +51,9 @@ class BiDAF(nn.Module):
         else:
             highway_outsize = self.dw
         self.highway = L.HighwayNet(config.highway_num_layers, highway_outsize)
-        # self.highway_qq = L.HighwayNet(config.highway_num_layers, highway_outsize)
        
         # TODO: Attention layers: 
-        self.prepro = L.BiEncoder(config, )
+        # self.prepro = L.BiEncoder(config, highway_outsize)
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config
@@ -72,6 +71,7 @@ class BiDAF(nn.Module):
         JX = x.shape[2]
         JQ = q.shape[1]
         M = x.shape[1]
+        N = x.shape[0]
 
         def get_long_tensor(np_tensor):
             if torch.cuda.is_available():
@@ -152,8 +152,12 @@ class BiDAF(nn.Module):
         Warning: In tensorflow, the weights in LSTM are combined together into 
         a bigger matrix and then pass through the RNN. 
         TODO: This could possibly be an optimization in spatial LSTM implementation 
+        size analysis:
+        xx: [batch_size, max_num_sents, max_sent_size, di]
+        qq: [batch_size, max_ques_size, di]
+        TODO: Seems that sequence length information is not needed ?
         '''
-                 
+        xx = xx.view(N, M * JX, -1) # [batch_size, sequence, feature]
 
 
         return None, None
@@ -215,6 +219,9 @@ if __name__ == '__main__':
     flags.add_argument("--share_cnn_weights", type=bool, default=True, help="Share Char-CNN weights [True]")
     flags.add_argument("--share_lstm_weights", type=bool, default=True, help="Share pre-processing (phrase-level) LSTM weights [True]")
     flags.add_argument("--var_decay", type=float, default=0.999, help="Exponential moving average decay for variables [0.999]")
+    flags.add_argument("--lstm_layers", type=int, default=1, help="Number of LSTM layers")
+    flags.add_argument("--batch_first", type=bool, default=True, help="LSTM order: (batch, seq, feature)")
+
 
     # Optimizations
     flags.add_argument("--cluster", type=bool, default=False, help="Cluster data for faster training [False]")
@@ -285,10 +292,10 @@ if __name__ == '__main__':
 
     x = np.zeros([N, M, JX], dtype='int')
     cx = np.zeros([N, M, JX, W], dtype='int')
-    x_mask = np.zeros([N, M, JX], dtype='bool')
+    x_mask = np.ones([N, M, JX], dtype='bool')
     q = np.zeros([N, JQ], dtype='int')
     cq = np.zeros([N, JQ, W], dtype='int')
-    q_mask = np.zeros([N, JQ], dtype='bool')
+    q_mask = np.ones([N, JQ], dtype='bool')
     y = np.zeros([N, M, JX], dtype='bool')
     y2 = np.zeros([N, M, JX], dtype='bool')
     new_emb_mat = np.zeros([VW, d], dtype='float')

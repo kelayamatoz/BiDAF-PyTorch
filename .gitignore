@@ -3,5 +3,7 @@ out/
 bidaf/__pycache__
 squad/__pycache__
 
+shape_info.txt
+
 *.swp
 *.xlsx
