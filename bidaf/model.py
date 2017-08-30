@@ -53,7 +53,9 @@ class BiDAF(nn.Module):
         self.highway = L.HighwayNet(config.highway_num_layers, highway_outsize)
        
         # TODO: Attention layers: 
-        # self.prepro = L.BiEncoder(config, highway_outsize)
+        self.prepro = L.BiEncoder(config, highway_outsize)
+        self.prepro_x = L.BiEncoder(config, highway_outsize)
+
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config
@@ -158,7 +160,14 @@ class BiDAF(nn.Module):
         TODO: Seems that sequence length information is not needed ?
         '''
         xx = xx.view(N, M * JX, -1) # [batch_size, sequence, feature]
+        u = self.prepro(qq)
+        if config.share_lstm_weights:
+            h = self.prepro(xx)
+        else:
+            h = self.prepro_x(xx)
 
+        print(u.size())
+        print(h.size())
 
         return None, None
 

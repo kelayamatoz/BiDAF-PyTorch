@@ -166,6 +166,34 @@ class Linear(LinearBase):
         return exp_mask(out, mask)
 
 
+class BiEncoder(nn.Module):
+    def __init__(self, config, input_size):
+        super(BiEncoder, self).__init__()
+        self.config = config
+        self.rnn = nn.LSTM(input_size=input_size, hidden_size=config.hidden_size,
+                           num_layers=config.lstm_layers, batch_first=config.batch_first, 
+                           dropout=(1 - config.input_keep_prob),
+                           bidirectional=True)
+        print('input_size = ', str(input_size))
+        print('hidden_size = ', str(config.hidden_size))
+
+    def forward(self, inputs):
+        batch_size, seq_len, feature_size = inputs.size()
+        print('batch_size =  ', str(batch_size))
+        print('seq_len =  ', str(seq_len))
+        print('feature_size =  ', str(feature_size))
+
+        # TODO: Would these two hidden variables requires grads?
+        # What is a good initializer? 
+        # h_0 = Variable(torch.zeros(batch_size, seq_len, feature_size), requires_grad=False)
+        # c_0 = Variable(torch.zeros(batch_size, seq_len, feature_size), requires_grad=False)
+
+        h_0 = Variable(torch.zeros(seq_len, batch_size, feature_size), requires_grad=False)
+        c_0 = Variable(torch.zeros(seq_len, batch_size, feature_size), requires_grad=False)
+        outputs, (h_n, c_n) = self.rnn(inputs, (h_0, c_0)) 
+        return outputs
+
+
 # TBA implemenations
 class TriLinear(LinearBase):
     def forward(self, a, b, mask):
@@ -190,23 +218,6 @@ class TFLinear(nn.Module):
         return self.main(a, b, mask)
     
             
-class BiEncoder(nn.Module):
-    def __init__(self, config, input_size):
-        super(Encoder, self).__init__()
-        self.config = config
-        self.rnn = nn.LSTM(input_size=input_size, hidden_size=config.hidden_size,
-                           num_layers=config.lstm_layers, batch_first=config.batch_first, 
-                           dropout=(1 - config.input_keep_prob),
-                           bidirectional=True)
-
-    def forward(self, inputs):
-        batch_size = inputs.size()[1]
-        state_shape = self.config.n_cells, batch_size, self.config.d_hidden
-        h0 = c0 = Variable(inputs.data.new(*state_shape).zero_())
-        outputs, _ = self.rnn(inputs, (h0, c0)) 
-        return outputs
-
-
 class FixedEmbedding(nn.Embedding):
     def forward(input):
         out = super(FixedEmbedding, self).forward(input)
