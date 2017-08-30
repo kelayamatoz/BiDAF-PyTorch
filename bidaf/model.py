@@ -167,11 +167,9 @@ class BiDAF(nn.Module):
         h = h.permute(1, 0, 2).contiguous().view(N, M, JX, -1)
         u = u.permute(1, 0, 2)
 
-        print(u.size())
-        print(h.size())
-
         print('>>>>>>>>>> main <<<<<<<<<<') 
-
+        print(h.size()) 
+        print(u.size())
 
         return None, None
 

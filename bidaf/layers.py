@@ -185,13 +185,32 @@ class BiEncoder(nn.Module):
 
         # TODO: Would these two hidden variables requires grads?
         # What is a good initializer? 
-        # h_0 = Variable(torch.zeros(batch_size, seq_len, feature_size), requires_grad=False)
-        # c_0 = Variable(torch.zeros(batch_size, seq_len, feature_size), requires_grad=False)
 
         h_0 = Variable(torch.zeros(seq_len, batch_size, feature_size), requires_grad=False)
         c_0 = Variable(torch.zeros(seq_len, batch_size, feature_size), requires_grad=False)
         outputs, (h_n, c_n) = self.rnn(inputs, (h_0, c_0)) 
         return outputs
+
+
+# class BiAttentionLayer(nn.Module):
+#     def __init__(self, config, JX, M, JQ):
+
+
+#     def forward(self, inputs):
+
+
+# class AttentionLayer(nn.Module):
+#     def __init__(self, config, JX, M, JQ):
+#         self.config = config
+#         self.JX = JX
+#         self.M = M
+#         self.JQ = JQ
+#         self.bi_attention = BiAttentionLayer(config, JX, M, JQ)
+
+
+#     def forward(self, h, u, h_mask=None, u_mask=None):
+#         if config.q2c_att or config.c2q_att:
+#             u_a, h_a = self.bi_attention(h, u, h_mask=h_mask, u_mask=u_mask) 
 
 
 # TBA implemenations
