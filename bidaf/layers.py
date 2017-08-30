@@ -167,18 +167,18 @@ class Linear(LinearBase):
 
 
 class BiEncoder(nn.Module):
-    def __init__(self, config, input_size):
+    def __init__(self, config, input_size, hidden_size):
         super(BiEncoder, self).__init__()
         self.config = config
-        self.rnn = nn.LSTM(input_size=input_size, hidden_size=config.hidden_size,
-                           num_layers=config.lstm_layers, batch_first=config.batch_first, 
+        self.rnn = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
+                           num_layers=config.lstm_layers, # batch_first=config.batch_first, 
                            dropout=(1 - config.input_keep_prob),
                            bidirectional=True)
         print('input_size = ', str(input_size))
         print('hidden_size = ', str(config.hidden_size))
 
     def forward(self, inputs):
-        batch_size, seq_len, feature_size = inputs.size()
+        seq_len, batch_size, feature_size = inputs.size()
         print('batch_size =  ', str(batch_size))
         print('seq_len =  ', str(seq_len))
         print('feature_size =  ', str(feature_size))
