@@ -112,7 +112,6 @@ class BiDAF(nn.Module):
             else: 
                 qq_ = self.multiconv_1d_qq(Acq, filter_sizes, heights, PADDING)
             xx = xx_.view(-1, M, JX, dco)
-            print('qq_ size: ', qq_.size())
             qq = qq_.view(-1, JQ, dco)
 
         if config.use_word_emb:
@@ -127,8 +126,6 @@ class BiDAF(nn.Module):
             print('d = ', d)
             Ax = self.word_embed(Variable(self.x)).view(N, M, JX, dw)
             Aq = self.word_embed(Variable(self.q)).view(N, JQ, dw)
-            print(Ax.size(), N, M, JX, dw)
-            print(Aq.size(), N, JQ, dw)
             # TODO: Do we need a tensor dict to store all of these things? 
 
         if config.use_char_emb:
@@ -147,8 +144,6 @@ class BiDAF(nn.Module):
             '''
             xx = self.highway(xx)
             qq = self.highway(qq)
-            print('xx size = ', xx.size())
-            print('qq size = ', qq.size())
 
         '''
         Warning: In tensorflow, the weights in LSTM are combined together into 
@@ -159,6 +154,7 @@ class BiDAF(nn.Module):
         qq: [batch_size, max_ques_size, di]
         TODO: Seems that sequence length information is not needed ?
         '''
+        print('>>>>>>>>>> prepro <<<<<<<<<<') 
         xx = xx.view(N, M * JX, -1) # [batch_size, sequence, feature]
         xx = xx.permute(1, 0, 2)
         qq = qq.permute(1, 0, 2)
@@ -168,8 +164,14 @@ class BiDAF(nn.Module):
         else:
             h = self.prepro_x(xx)
 
+        h = h.permute(1, 0, 2).contiguous().view(N, M, JX, -1)
+        u = u.permute(1, 0, 2)
+
         print(u.size())
         print(h.size())
+
+        print('>>>>>>>>>> main <<<<<<<<<<') 
+
 
         return None, None
 

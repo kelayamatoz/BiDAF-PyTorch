@@ -171,7 +171,7 @@ class BiEncoder(nn.Module):
         super(BiEncoder, self).__init__()
         self.config = config
         self.rnn = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
-                           num_layers=config.lstm_layers, # batch_first=config.batch_first, 
+                           num_layers=config.lstm_layers,
                            dropout=(1 - config.input_keep_prob),
                            bidirectional=True)
         print('input_size = ', str(input_size))
