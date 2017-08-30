@@ -164,8 +164,8 @@ class BiDAF(nn.Module):
         else:
             h = self.prepro_x(xx)
 
-        h = h.permute(1, 0, 2).contiguous().view(N, M, JX, -1)
-        u = u.permute(1, 0, 2)
+        h = h.permute(1, 0, 2).contiguous().view(N, M, JX, -1) # [N, M, JX, 2 * d]
+        u = u.permute(1, 0, 2) # [N, JQ, 2 * d]
 
         print('>>>>>>>>>> main <<<<<<<<<<') 
         print(h.size()) 

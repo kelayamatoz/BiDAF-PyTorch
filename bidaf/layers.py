@@ -192,26 +192,44 @@ class BiEncoder(nn.Module):
         return outputs
 
 
-# class BiAttentionLayer(nn.Module):
-#     def __init__(self, config, JX, M, JQ):
+class BiAttentionLayer(nn.Module):
+    def __init__(self, config, JX, M, JQ):
+        self.config = config
+        self.JX = JX
+        self.M = M
+        self.JQ = JQ
+
+    def forward(self, h, u, h_mask=None, u_mask=None):
+        h_aug = h.unsqueeze(3).repeat([1, 1, 1, self.JQ, 1])
+        u_aug = u.unsqueeze(1).unsqueeze(1).repeat([1, self.M, self.JX, 1, 1])
+        if h_mask is None:
+            hu_mask = None
+        else:
+            h_mask_aug = h_mask.unsqueeze(3).repeat([1, 1, 1, JQ])
+            u_mask_aug = u_mask.unsqueeze(1).unsqueeze(1).repeat([1, M, JX, 1])
+            hu_mask = h_mask_aug & u_mask_aug
+
+class AttentionLayer(nn.Module):
+    def __init__(self, config, JX, M, JQ):
+        self.config = config
+        self.JX = JX
+        self.M = M
+        self.JQ = JQ
+        self.bi_attention = BiAttentionLayer(config, JX, M, JQ)
 
 
-#     def forward(self, inputs):
+    def forward(self, h, u, h_mask=None, u_mask=None):
+        if config.q2c_att or config.c2q_att:
+            u_a, h_a = self.bi_attention(h, u, h_mask=h_mask, u_mask=u_mask)
+        else:
+            print("AttentionLayer: q2c_att or c2q_att False not supported")
 
+        if config.q2c_att:
+            p0 = torch.cat([h, u_a, torch.mul(h, u_a), torch.mul(h, h_a)], 3)
+        else:
+            print("AttentionLayer: q2c_att False not supported")
 
-# class AttentionLayer(nn.Module):
-#     def __init__(self, config, JX, M, JQ):
-#         self.config = config
-#         self.JX = JX
-#         self.M = M
-#         self.JQ = JQ
-#         self.bi_attention = BiAttentionLayer(config, JX, M, JQ)
-
-
-#     def forward(self, h, u, h_mask=None, u_mask=None):
-#         if config.q2c_att or config.c2q_att:
-#             u_a, h_a = self.bi_attention(h, u, h_mask=h_mask, u_mask=u_mask) 
-
+        return p0
 
 # TBA implemenations
 class TriLinear(LinearBase):
