@@ -177,6 +177,7 @@ class BiEncoder(nn.Module):
         print('input_size = ', str(input_size))
         print('hidden_size = ', str(config.hidden_size))
 
+
     def forward(self, inputs):
         seq_len, batch_size, feature_size = inputs.size()
         print('batch_size =  ', str(batch_size))
@@ -191,13 +192,49 @@ class BiEncoder(nn.Module):
         outputs, (h_n, c_n) = self.rnn(inputs, (h_0, c_0)) 
         return outputs
 
+class GetLogits(nn.Module):
+    def __init__(self, config, size, bias, bias_start=0.0, wd=0.0, input_keep_prob=1.0, \
+                 is_train=None, func=None, squeeze=True, output_size=1):
+        self.config = config
+        self.size = size
+        self.bias = bias
+        self.bias_start = bias_start
+        self.wd = wd
+        self.input_keep_prob = input_keep_prob
+        self.is_train = is_train
+        self.func = func
+        self.squeeze = squeeze
+        self.output_size = output_size
+
+        self.dropout_ = nn.DropOut(1 - input_keep_prob)
+        self.linear = nn.Linear()
+
+
+    def forward(self, args, mask):
+        new_arg = torch.mul(args[0], args[1])
+        logit_args = [args[0], args[1], new_arg]
+        '''
+        return linear_logits([args[0], args[1], new_arg], bias, bias_start=bias_start, scope=scope, mask=mask, wd=wd, input_keep_prob=input_keep_prob,
+            is_train=is_train)
+        '''
+        flat_args = [flatten(arg, 1) for arg in logit_args]
+        if self.input_keep_prob < 1.0 && self.is_train:
+            flat_args = self.dropout_(flat_args)
+        flat_out = self.linear(flat_args, )
+
+        if mask is not None:
+            logits = exp_mask(logits, mask)
+
+        return logits
+
 
 class BiAttentionLayer(nn.Module):
-    def __init__(self, config, JX, M, JQ):
+    def __init__(self, config, JX, M, JQ, input_keep_prob):
         self.config = config
         self.JX = JX
         self.M = M
         self.JQ = JQ
+        self.input_keep_prob = input_keep_prob
 
     def forward(self, h, u, h_mask=None, u_mask=None):
         h_aug = h.unsqueeze(3).repeat([1, 1, 1, self.JQ, 1])
@@ -209,7 +246,17 @@ class BiAttentionLayer(nn.Module):
             u_mask_aug = u_mask.unsqueeze(1).unsqueeze(1).repeat([1, M, JX, 1])
             hu_mask = h_mask_aug & u_mask_aug
 
-class AttentionLayer(nn.Module):
+        # get u logits
+        size = None
+        bias = True
+        bias_start = 0.0
+        is_train = config.is_train
+        wd = config.wd
+        mask = hu_mask
+        squeeze = True
+        args = [h_aug, u_aug, torch.mul(h_aug, u_aug)]
+        flat_args = [flatten(arg, 1) for arg in args]
+
     def __init__(self, config, JX, M, JQ):
         self.config = config
         self.JX = JX
