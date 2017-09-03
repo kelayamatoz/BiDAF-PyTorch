@@ -51,10 +51,9 @@ class BiDAF(nn.Module):
         else:
             highway_outsize = self.dw
         self.highway = L.HighwayNet(config.highway_num_layers, highway_outsize)
-       
-        # TODO: Attention layers: 
         self.prepro = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
         self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
+        self.attention_layer = L.AttentionLayer(config, config.JX, config.M, config.JQ)
 
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
@@ -170,6 +169,9 @@ class BiDAF(nn.Module):
         print('>>>>>>>>>> main <<<<<<<<<<') 
         print(h.size()) 
         print(u.size())
+
+        p0 = self.attention_layer(h, u, h_mask=self.x_mask, u_mask=self.q_mask)
+        print(p0.size())
 
         return None, None
 

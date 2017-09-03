@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch import Tensor
+from functools import reduce
+from operator import mul
 import code
 
 VERY_BIG_NUMBER = 1e30
@@ -16,19 +18,54 @@ else:
     dtype = torch.FloatTensor
 
 
-def softsel(target, logits):
-    out = F.softmax(logits)
-    out = out.unsqueeze(len(out.size())).mul(target).sum(len(target.size())-2)
-    return out
+def flatten(tensor, keep):
+    fixed_shape = list(tensor.size())
+    start = len(fixed_shape) - keep
+    '''
+    In this particular case, the dynamic shape is always the 
+    same as the static shape
+    '''
+    left = reduce(mul, [fixed_shape[i] for i in range(start)])
+    out_shape = [left] + [fixed_shape[i] for i in range(start, len(fixed_shape))]
+    flat = tensor.view(out_shape)
+    return flat
 
 
 def exp_mask(logits, mask):
     return torch.add_(logits, (1 - mask)) * VERY_NEGATIVE_NUMBER
 
 
+def masked_softmax(logits, mask=None):
+    if mask is not None:
+        logits = exp_mask(logits, mask)
+
+    flat_logits = flatten(logits, 1)
+    flat_out = F.softmax(flat_logits)
+    out = reconstruct(flat_out)
+    return out
+
+
+def softsel(target, logits, mask=None):
+    out = masked_softmax(logits, mask)
+    out = out.unsqueeze(len(out.size())).mul(target).sum(len(target.size())-2)
+    return out
+
+
 def softmax3d(input, xd, yd):
     out = input.view(-1, xd*yd)
     out = F.softmax(out).view(-1, xd, yd)
+    return out
+
+
+def reconstruct(tensor, ref, keep):
+    ref_shape = list(ref.size())
+    tensor_shape = list(tensor.size())
+    ref_stop = len(ref_shape) - keep
+    tensor_start = len(tensor_shape) - keep
+    pre_shape = [ref_shape[i] for i in range(ref_stop)]
+    keep_shape = [tensor_shape[i] for i in range(tensor_start, len(tensor_shape))]
+    target_shape = pre_shape + keep_shape
+    out = tensor.view(target_shape)
     return out
 
 
@@ -148,6 +185,7 @@ class LinearBase(nn.Module):
         self.lin = nn.Linear(input_size, output_size)
         self.input_size = input_size
 
+
     def forward(self, a, b, mask):
         shape = a.size()
         N = self.input_size
@@ -192,35 +230,35 @@ class BiEncoder(nn.Module):
         outputs, (h_n, c_n) = self.rnn(inputs, (h_0, c_0)) 
         return outputs
 
+
 class GetLogits(nn.Module):
-    def __init__(self, config, size, bias, bias_start=0.0, wd=0.0, input_keep_prob=1.0, \
-                 is_train=None, func=None, squeeze=True, output_size=1):
+    def __init__(self, config, input_keep_prob=1.0, \
+                 is_train=None, output_size=1):
         self.config = config
-        self.size = size
-        self.bias = bias
-        self.bias_start = bias_start
-        self.wd = wd
         self.input_keep_prob = input_keep_prob
         self.is_train = is_train
-        self.func = func
-        self.squeeze = squeeze
         self.output_size = output_size
 
         self.dropout_ = nn.DropOut(1 - input_keep_prob)
-        self.linear = nn.Linear()
+        # self.linear = nn.Linear(, output_size)
+        self.register_parameter('linear', None)
 
 
     def forward(self, args, mask):
+        '''
+        TODO:
+        The weight decay can be added to the optimizer
+        '''
         new_arg = torch.mul(args[0], args[1])
         logit_args = [args[0], args[1], new_arg]
-        '''
-        return linear_logits([args[0], args[1], new_arg], bias, bias_start=bias_start, scope=scope, mask=mask, wd=wd, input_keep_prob=input_keep_prob,
-            is_train=is_train)
-        '''
+
         flat_args = [flatten(arg, 1) for arg in logit_args]
         if self.input_keep_prob < 1.0 && self.is_train:
             flat_args = self.dropout_(flat_args)
-        flat_out = self.linear(flat_args, )
+
+        if self.linear is None:
+            self.linear = nn.Linear(flat_args.size()[-1], self.output_size)
+        flat_out = self.linear(flat_args)
 
         if mask is not None:
             logits = exp_mask(logits, mask)
@@ -229,12 +267,13 @@ class GetLogits(nn.Module):
 
 
 class BiAttentionLayer(nn.Module):
-    def __init__(self, config, JX, M, JQ, input_keep_prob):
+    def __init__(self, config, JX, M, JQ, input_keep_prob=1.0):
         self.config = config
         self.JX = JX
         self.M = M
         self.JQ = JQ
         self.input_keep_prob = input_keep_prob
+        self.get_logits = GetLogits(config)
 
     def forward(self, h, u, h_mask=None, u_mask=None):
         h_aug = h.unsqueeze(3).repeat([1, 1, 1, self.JQ, 1])
@@ -244,30 +283,30 @@ class BiAttentionLayer(nn.Module):
         else:
             h_mask_aug = h_mask.unsqueeze(3).repeat([1, 1, 1, JQ])
             u_mask_aug = u_mask.unsqueeze(1).unsqueeze(1).repeat([1, M, JX, 1])
-            hu_mask = h_mask_aug & u_mask_aug
+            hu_mask = h_mask_aug & u_mask_aug 
 
-        # get u logits
-        size = None
-        bias = True
-        bias_start = 0.0
-        is_train = config.is_train
-        wd = config.wd
-        mask = hu_mask
-        squeeze = True
-        args = [h_aug, u_aug, torch.mul(h_aug, u_aug)]
-        flat_args = [flatten(arg, 1) for arg in args]
+        logits = self.get_logits((h_aug, u_aug), hu_mask)
+        u_a = softsel(u_aug, u_logits)  # [N, M, JX, d]
+        h_a = softsel(h, torch.max(u_logits, 3)) # [N, M, d]
+        h_a = h_a.unsqueeze(h_a, 2).repeat([1, 1, self.JX, 1])
 
+        return u_a, h_a
+
+
+class AttentionLayer(nn.Module):
     def __init__(self, config, JX, M, JQ):
-        self.config = config
-        self.JX = JX
-        self.M = M
-        self.JQ = JQ
         self.bi_attention = BiAttentionLayer(config, JX, M, JQ)
 
 
     def forward(self, h, u, h_mask=None, u_mask=None):
         if config.q2c_att or config.c2q_att:
             u_a, h_a = self.bi_attention(h, u, h_mask=h_mask, u_mask=u_mask)
+            '''
+            u_a: [N, M, JX, d]
+            h_a: [N, M, d]
+            '''
+            print(u_a.size())
+            print(h_a.size())
         else:
             print("AttentionLayer: q2c_att or c2q_att False not supported")
 
@@ -277,6 +316,7 @@ class BiAttentionLayer(nn.Module):
             print("AttentionLayer: q2c_att False not supported")
 
         return p0
+
 
 # TBA implemenations
 class TriLinear(LinearBase):
