@@ -14,9 +14,10 @@ VERY_NEGATIVE_NUMBER = -VERY_BIG_NUMBER
 
 if torch.cuda.is_available():
     dtype = torch.cuda.FloatTensor
+    ldtype = torch.cuda.LongTensor
 else:
     dtype = torch.FloatTensor
-
+    ldtype = torch.LongTensor
 
 def flatten(tensor, keep):
     fixed_shape = list(tensor.size())
@@ -32,7 +33,7 @@ def flatten(tensor, keep):
 
 
 def exp_mask(logits, mask):
-    return torch.add_(logits, (1 - mask)) * VERY_NEGATIVE_NUMBER
+    return torch.add_(logits, (torch.ones(mask.size()).type(ldtype) - mask)) * VERY_NEGATIVE_NUMBER
 
 
 def masked_softmax(logits, mask=None):
@@ -84,6 +85,7 @@ class Conv1D(nn.Module):
                     filter_height, filter_width, is_train=None, \
                     keep_prob=1.0, padding=0):
         super(Conv1D, self).__init__()
+
         self.is_train = is_train
         self.dropout_ = nn.Dropout(1. - keep_prob)
         self.keep_prob = keep_prob
@@ -109,6 +111,7 @@ class Conv1D(nn.Module):
 class MultiConv1D(nn.Module):
     def __init__(self, is_train, keep_prob):
         super(MultiConv1D, self).__init__()
+
         self.is_train = is_train
         self.keep_prob = keep_prob
         self.conv1d_list = nn.ModuleList()
@@ -171,6 +174,7 @@ class HighwayLayer(nn.Module):
 class HighwayNet(nn.Module):
     def __init__(self, depth, size):
         super(HighwayNet, self).__init__()
+
         layers = [HighwayLayer(size) for _ in range(depth)]
         self.main = nn.Sequential(*layers)
 
@@ -195,18 +199,19 @@ class LinearBase(nn.Module):
         return shape, a_, b_
 
 
-class Linear(LinearBase):
-    def forward(self, a, b, mask):
-        shape, a_, b_ = super(self).forward(a, b, mask)
-        input = torch.cat((a_, b__), 1)
-        out = self.lin(self.do(input))
-        out = out.view(shape).squeeze(len(shape)-1)
-        return exp_mask(out, mask)
+# class Linear(LinearBase):
+#     def forward(self, a, b, mask):
+#         shape, a_, b_ = super(self).forward(a, b, mask)
+#         input = torch.cat((a_, b__), 1)
+#         out = self.lin(self.do(input))
+#         out = out.view(shape).squeeze(len(shape)-1)
+#         return exp_mask(out, mask)
 
 
 class BiEncoder(nn.Module):
     def __init__(self, config, input_size, hidden_size):
         super(BiEncoder, self).__init__()
+
         self.config = config
         self.rnn = nn.LSTM(input_size=input_size, hidden_size=hidden_size,
                            num_layers=config.lstm_layers,
@@ -232,34 +237,31 @@ class BiEncoder(nn.Module):
 
 
 class GetLogits(nn.Module):
-    def __init__(self, config, input_keep_prob=1.0, \
-                 is_train=None, output_size=1):
+    def __init__(self, config, input_size, input_keep_prob=1.0, \
+                    output_size=1, num_args=0):
+        super(GetLogits, self).__init__()
+
         self.config = config
         self.input_keep_prob = input_keep_prob
-        self.is_train = is_train
-        self.output_size = output_size
-
-        self.dropout_ = nn.DropOut(1 - input_keep_prob)
-        # self.linear = nn.Linear(, output_size)
-        self.register_parameter('linear', None)
+        self.is_train = config.is_train
+        self.linear = nn.Linear(input_size * num_args, output_size)
 
 
     def forward(self, args, mask):
         '''
         TODO:
         The weight decay can be added to the optimizer
+        Also need to squeeze out
         '''
         new_arg = torch.mul(args[0], args[1])
         logit_args = [args[0], args[1], new_arg]
 
-        flat_args = [flatten(arg, 1) for arg in logit_args]
-        if self.input_keep_prob < 1.0 && self.is_train:
-            flat_args = self.dropout_(flat_args)
+        flat_args = [F.dropout(flatten(arg, 1), training=self.is_train) \
+                        for arg in logit_args]
 
-        if self.linear is None:
-            self.linear = nn.Linear(flat_args.size()[-1], self.output_size)
-        flat_out = self.linear(flat_args)
-
+        flat_outs = self.linear(torch.cat(flat_args, 1))
+        out = reconstruct(flat_outs, flat_args[0], 1)
+        logits = out.squeeze([len(list(flat_args[0])) - 1])
         if mask is not None:
             logits = exp_mask(logits, mask)
 
@@ -267,38 +269,46 @@ class GetLogits(nn.Module):
 
 
 class BiAttentionLayer(nn.Module):
-    def __init__(self, config, JX, M, JQ, input_keep_prob=1.0):
+    def __init__(self, config, JX, M, JQ, input_feature_size, \
+                    input_keep_prob=1.0):
+        super(BiAttentionLayer, self).__init__()
+
         self.config = config
         self.JX = JX
         self.M = M
         self.JQ = JQ
         self.input_keep_prob = input_keep_prob
-        self.get_logits = GetLogits(config)
+        # num_args = 3: h_aug, u_aug, hu_aug
+        self.get_logits = GetLogits(config, input_feature_size, num_args=3)
+
 
     def forward(self, h, u, h_mask=None, u_mask=None):
-        h_aug = h.unsqueeze(3).repeat([1, 1, 1, self.JQ, 1])
-        u_aug = u.unsqueeze(1).unsqueeze(1).repeat([1, self.M, self.JX, 1, 1])
+        h_aug = h.unsqueeze(3).repeat(1, 1, 1, self.JQ, 1)
+        u_aug = u.unsqueeze(1).unsqueeze(1).repeat(1, self.M, self.JX, 1, 1)
         if h_mask is None:
             hu_mask = None
         else:
-            h_mask_aug = h_mask.unsqueeze(3).repeat([1, 1, 1, JQ])
-            u_mask_aug = u_mask.unsqueeze(1).unsqueeze(1).repeat([1, M, JX, 1])
+            h_mask_aug = h_mask.unsqueeze(3).repeat(1, 1, 1, self.JQ)
+            u_mask_aug = u_mask.unsqueeze(1).unsqueeze(1).repeat(1, self.M, self.JX, 1)
             hu_mask = h_mask_aug & u_mask_aug 
 
         logits = self.get_logits((h_aug, u_aug), hu_mask)
         u_a = softsel(u_aug, u_logits)  # [N, M, JX, d]
         h_a = softsel(h, torch.max(u_logits, 3)) # [N, M, d]
-        h_a = h_a.unsqueeze(h_a, 2).repeat([1, 1, self.JX, 1])
+        h_a = h_a.unsqueeze(h_a, 2).repeat(1, 1, self.JX, 1)
 
         return u_a, h_a
 
 
 class AttentionLayer(nn.Module):
-    def __init__(self, config, JX, M, JQ):
-        self.bi_attention = BiAttentionLayer(config, JX, M, JQ)
+    def __init__(self, config, JX, M, JQ, input_feature_size):
+        super(AttentionLayer, self).__init__()
+        self.bi_attention = BiAttentionLayer(config, JX, M, JQ, input_feature_size)
+        self.config = config
 
 
     def forward(self, h, u, h_mask=None, u_mask=None):
+        config = self.config
         if config.q2c_att or config.c2q_att:
             u_a, h_a = self.bi_attention(h, u, h_mask=h_mask, u_mask=u_mask)
             '''

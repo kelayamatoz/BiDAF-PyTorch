@@ -29,7 +29,8 @@ class BiDAF(nn.Module):
         self.config = config
         self.logits = None
         self.yp = None
-        self.dc, self.dw, self.dco = config.char_emb_size, config.word_emb_size, config.char_out_size
+        self.dc, self.dw, self.dco = config.char_emb_size, config.word_emb_size, \
+                                        config.char_out_size
         self.N, self.M, self.JX, self.JQ, self.VW, self.VC, self.d, self.W = \
             config.batch_size, config.max_num_sents, config.max_sent_size, \
             config.max_ques_size, config.word_vocab_size, config.char_vocab_size, \
@@ -53,7 +54,7 @@ class BiDAF(nn.Module):
         self.highway = L.HighwayNet(config.highway_num_layers, highway_outsize)
         self.prepro = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
         self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
-        self.attention_layer = L.AttentionLayer(config, config.JX, config.M, config.JQ)
+        self.attention_layer = L.AttentionLayer(config, self.JX, self.M, self.JQ, 2 * highway_outsize)
 
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
@@ -83,8 +84,8 @@ class BiDAF(nn.Module):
         self.x = get_long_tensor(x.reshape(N, -1)) 
         self.cx = get_long_tensor(cx.reshape(N, -1))
         # TODO: Do we need a bool tensor? 
-        # self.x_mask = get_long_tensor(x_mask)
-        # self.q_mask = get_long_tensor(q_mask)
+        self.x_mask = get_long_tensor(x_mask)
+        self.q_mask = get_long_tensor(q_mask)
         self.q = get_long_tensor(q.reshape(N, -1))
         self.cq = get_long_tensor(cq.reshape(N, -1))
         self.new_emb_mat = Tensor(new_emb_mat).type(dtype) 
@@ -167,8 +168,8 @@ class BiDAF(nn.Module):
         u = u.permute(1, 0, 2) # [N, JQ, 2 * d]
 
         print('>>>>>>>>>> main <<<<<<<<<<') 
-        print(h.size()) 
-        print(u.size())
+        print('h size = ', h.size()) 
+        print('u size = ', u.size())
 
         p0 = self.attention_layer(h, u, h_mask=self.x_mask, u_mask=self.q_mask)
         print(p0.size())
@@ -305,12 +306,18 @@ if __name__ == '__main__':
 
     x = np.zeros([N, M, JX], dtype='int')
     cx = np.zeros([N, M, JX, W], dtype='int')
-    x_mask = np.ones([N, M, JX], dtype='bool')
+    '''
+    TODO: 
+    It seems that pytorch doesn't take a bool tensor. Only an 
+    int tensor can be taken. Need to change the trainer to use
+    int tensors...
+    '''
+    x_mask = np.ones([N, M, JX], dtype='int')
     q = np.zeros([N, JQ], dtype='int')
     cq = np.zeros([N, JQ, W], dtype='int')
-    q_mask = np.ones([N, JQ], dtype='bool')
-    y = np.zeros([N, M, JX], dtype='bool')
-    y2 = np.zeros([N, M, JX], dtype='bool')
+    q_mask = np.ones([N, JQ], dtype='int')
+    y = np.zeros([N, M, JX], dtype='int')
+    y2 = np.zeros([N, M, JX], dtype='int')
     new_emb_mat = np.zeros([VW, d], dtype='float')
 
     config.is_train = True
