@@ -42,7 +42,7 @@ def masked_softmax(logits, mask=None):
 
     flat_logits = flatten(logits, 1)
     flat_out = F.softmax(flat_logits)
-    out = reconstruct(flat_out)
+    out = reconstruct(flat_out, logits, 1)
     return out
 
 
@@ -129,8 +129,6 @@ class MultiConv1D(nn.Module):
 
         outs = []
         for idx, (filter_size, height) in enumerate(zip(filter_sizes, heights)):
-            print("filter_size = "+str(filter_size))
-            print("height = "+str(height))
             if filter_size == 0:
                 continue
             # in_ shape: batch, in_height, in_width, in_channels
@@ -217,21 +215,11 @@ class BiEncoder(nn.Module):
                            num_layers=config.lstm_layers,
                            dropout=(1 - config.input_keep_prob),
                            bidirectional=True)
-        print('input_size = ', str(input_size))
-        print('hidden_size = ', str(config.hidden_size))
 
 
     def forward(self, inputs):
         seq_len, batch_size, feature_size = inputs.size()
-        print('batch_size = ', str(batch_size))
-        print('seq_len = ', str(seq_len))
-        print('feature_size = ', str(feature_size))
 
-        # TODO: Would these two hidden variables requires grads?
-        # What is a good initializer? 
-
-        # h_0 = Variable(torch.zeros(2, batch_size, feature_size), requires_grad=False)
-        # c_0 = Variable(torch.zeros(2, batch_size, feature_size), requires_grad=False)
         h_0 = Variable(torch.zeros(2, batch_size, self.config.hidden_size), requires_grad=False)
         c_0 = Variable(torch.zeros(2, batch_size, self.config.hidden_size), requires_grad=False)
         outputs, (h_n, c_n) = self.rnn(inputs, (h_0, c_0)) 
@@ -262,9 +250,8 @@ class GetLogits(nn.Module):
                         for arg in logit_args]
 
         flat_outs = self.linear(torch.cat(flat_args, 1))
-        out = reconstruct(flat_outs, flat_args[0], 1)
-        logits = out.squeeze()
-        # logits = out.squeeze([len(list(flat_args[0])) - 1])
+        out = reconstruct(flat_outs, args[0], 1)
+        logits = out.squeeze(len(list(args[0].size())) - 1)
         # TODO: seems that we only have one dim here?
         if mask is not None:
             logits = exp_mask(logits, mask)
@@ -289,7 +276,6 @@ class BiAttentionLayer(nn.Module):
     def forward(self, h, u, h_mask=None, u_mask=None):
         h_aug = h.unsqueeze(3).repeat(1, 1, 1, self.JQ, 1)
         u_aug = u.unsqueeze(1).unsqueeze(1).repeat(1, self.M, self.JX, 1, 1)
-        print('u_aug size =', str(u_aug.size()))
         if h_mask is None:
             hu_mask = None
         else:
@@ -298,13 +284,9 @@ class BiAttentionLayer(nn.Module):
             hu_mask = h_mask_aug & u_mask_aug 
 
         u_logits = self.get_logits((h_aug, u_aug), hu_mask)
-        print('u_logits size', u_logits.size())
-        print('u_aug size', u_aug.size())
-        # code.interact(local=locals())
         u_a = softsel(u_aug, u_logits)  # [N, M, JX, d]
-        h_a = softsel(h, torch.max(u_logits, 3)) # [N, M, d]
-        h_a = h_a.unsqueeze(h_a, 2).repeat(1, 1, self.JX, 1)
-
+        h_a = softsel(h, torch.max(u_logits, 3)[0]) # [N, M, d]
+        h_a = h_a.unsqueeze(2).repeat(1, 1, self.JX, 1)
         return u_a, h_a
 
 
@@ -323,8 +305,6 @@ class AttentionLayer(nn.Module):
             u_a: [N, M, JX, d]
             h_a: [N, M, d]
             '''
-            print(u_a.size())
-            print(h_a.size())
         else:
             print("AttentionLayer: q2c_att or c2q_att False not supported")
 

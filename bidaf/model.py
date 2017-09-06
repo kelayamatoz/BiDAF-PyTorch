@@ -56,7 +56,7 @@ class BiDAF(nn.Module):
         # self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
         self.prepro = L.BiEncoder(config, highway_outsize, hidden_size=config.hidden_size)
         self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=config.hidden_size)
-        self.attention_layer = L.AttentionLayer(config, self.JX, self.M, self.JQ, 2 * highway_outsize)
+        self.attention_layer = L.AttentionLayer(config, self.JX, self.M, self.JQ, 2 * config.hidden_size)
 
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
@@ -85,7 +85,6 @@ class BiDAF(nn.Module):
 
         self.x = get_long_tensor(x.reshape(N, -1)) 
         self.cx = get_long_tensor(cx.reshape(N, -1))
-        # TODO: Do we need a bool tensor? 
         self.x_mask = get_long_tensor(x_mask)
         self.q_mask = get_long_tensor(q_mask)
         self.q = get_long_tensor(q.reshape(N, -1))
@@ -128,7 +127,6 @@ class BiDAF(nn.Module):
             print('d = ', d)
             Ax = self.word_embed(Variable(self.x)).view(N, M, JX, dw)
             Aq = self.word_embed(Variable(self.q)).view(N, JQ, dw)
-            # TODO: Do we need a tensor dict to store all of these things? 
 
         if config.use_char_emb:
             xx = torch.cat((xx, Ax), 3)
@@ -154,7 +152,6 @@ class BiDAF(nn.Module):
         size analysis:
         xx: [batch_size, max_num_sents, max_sent_size, di]
         qq: [batch_size, max_ques_size, di]
-        TODO: Seems that sequence length information is not needed ?
         '''
         print('>>>>>>>>>> prepro <<<<<<<<<<') 
         xx = xx.view(N, M * JX, -1) # [batch_size, sequence, feature]
@@ -176,8 +173,6 @@ class BiDAF(nn.Module):
         print('u size = ', u.size())
 
         p0 = self.attention_layer(h, u, h_mask=self.x_mask, u_mask=self.q_mask)
-        print(p0.size())
-
         return None, None
 
 
