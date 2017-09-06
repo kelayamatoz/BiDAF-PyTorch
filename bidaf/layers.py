@@ -197,16 +197,9 @@ class LinearBase(nn.Module):
         return shape, a_, b_
 
 
-# class Linear(LinearBase):
-#     def forward(self, a, b, mask):
-#         shape, a_, b_ = super(self).forward(a, b, mask)
-#         input = torch.cat((a_, b__), 1)
-#         out = self.lin(self.do(input))
-#         out = out.view(shape).squeeze(len(shape)-1)
-#         return exp_mask(out, mask)
-
-
 class BiEncoder(nn.Module):
+    """This is a wrapper of the bidirectional LSTM
+    """
     def __init__(self, config, input_size, hidden_size):
         super(BiEncoder, self).__init__()
 
@@ -219,7 +212,8 @@ class BiEncoder(nn.Module):
 
     def forward(self, inputs):
         seq_len, batch_size, feature_size = inputs.size()
-
+        # TODO: need to fix the weird encoding here.... at least when doing it, make sure that 
+        # M is squeezed.
         h_0 = Variable(torch.zeros(2, batch_size, self.config.hidden_size), requires_grad=False)
         c_0 = Variable(torch.zeros(2, batch_size, self.config.hidden_size), requires_grad=False)
         outputs, (h_n, c_n) = self.rnn(inputs, (h_0, c_0)) 
@@ -228,33 +222,51 @@ class BiEncoder(nn.Module):
 
 class GetLogits(nn.Module):
     def __init__(self, config, input_size, input_keep_prob=1.0, \
-                    output_size=1, num_args=0):
+                    output_size=1, function=None):
         super(GetLogits, self).__init__()
 
         self.config = config
         self.input_keep_prob = input_keep_prob
         self.is_train = config.is_train
-        self.linear = nn.Linear(input_size * num_args, output_size)
+        self.linear = nn.Linear(input_size, output_size)
+        self.function = function
 
-
-    def forward(self, args, mask):
+    def forward(self, args, mask=None):
         '''
         TODO:
         The weight decay can be added to the optimizer
         Also need to squeeze out
         '''
-        new_arg = torch.mul(args[0], args[1])
-        logit_args = [args[0], args[1], new_arg]
+        def linear_logits(args):
+            flat_args = [F.dropout(flatten(arg, 1), training=self.is_train, p=1-self.input_keep_prob) \
+                            for arg in args]
+            flat_outs = self.linear(torch.cat(flat_args, 1))
+            out = reconstruct(flat_outs, args[0], 1)
+            logits = out.squeeze(len(list(args[0].size())) - 1)
+            if mask is not None:
+                logits = exp_mask(logits, mask)
 
-        flat_args = [F.dropout(flatten(arg, 1), training=self.is_train) \
-                        for arg in logit_args]
+            return logits
 
-        flat_outs = self.linear(torch.cat(flat_args, 1))
-        out = reconstruct(flat_outs, args[0], 1)
-        logits = out.squeeze(len(list(args[0].size())) - 1)
-        # TODO: seems that we only have one dim here?
-        if mask is not None:
-            logits = exp_mask(logits, mask)
+
+        if self.function == 'tri_linear':
+            new_arg = torch.mul(args[0], args[1])
+            logit_args = [args[0], args[1], new_arg]
+            logits = linear_logits(logit_args)
+
+            # flat_args = [F.dropout(flatten(arg, 1), training=self.is_train, p=1-self.input_keep_prob) \
+            #                 for arg in logit_args]
+
+            # flat_outs = self.linear(torch.cat(flat_args, 1))
+            # out = reconstruct(flat_outs, args[0], 1)
+            # logits = out.squeeze(len(list(args[0].size())) - 1)
+            # if mask is not None:
+            #     logits = exp_mask(logits, mask)
+        elif self.function == 'linear':
+            logits = linear_logits(args)
+        else :
+            print("Warning: Logits is not provided !")
+            logits = None
 
         return logits
 
@@ -269,8 +281,8 @@ class BiAttentionLayer(nn.Module):
         self.M = M
         self.JQ = JQ
         self.input_keep_prob = input_keep_prob
-        # num_args = 3: h_aug, u_aug, hu_aug
-        self.get_logits = GetLogits(config, input_feature_size, num_args=3)
+        # input_size: including h_aug, u_aug, hu_aug
+        self.get_logits = GetLogits(config, input_feature_size * 3, function=config.logit_func)
 
 
     def forward(self, h, u, h_mask=None, u_mask=None):
@@ -283,7 +295,7 @@ class BiAttentionLayer(nn.Module):
             u_mask_aug = u_mask.unsqueeze(1).unsqueeze(1).repeat(1, self.M, self.JX, 1)
             hu_mask = h_mask_aug & u_mask_aug 
 
-        u_logits = self.get_logits((h_aug, u_aug), hu_mask)
+        u_logits = self.get_logits((h_aug, u_aug), mask=hu_mask)
         u_a = softsel(u_aug, u_logits)  # [N, M, JX, d]
         h_a = softsel(h, torch.max(u_logits, 3)[0]) # [N, M, d]
         h_a = h_a.unsqueeze(2).repeat(1, 1, self.JX, 1)
@@ -314,60 +326,3 @@ class AttentionLayer(nn.Module):
             print("AttentionLayer: q2c_att False not supported")
 
         return p0
-
-
-# TBA implemenations
-class TriLinear(LinearBase):
-    def forward(self, a, b, mask):
-        shape, a_, b_ = super(self).forward(a, b, mask)
-        input = torch.cat((a_, b_, a_*b_), 1)
-        out = self.lin(self.do(input))
-        out = out.view(shape).squeeze(len(shape)-1)
-        return exp_mask(out, mask)
-
-
-class TFLinear(nn.Module):
-    def __init__(self, input_size, output_size, func, do_p=0.2):
-        super(TFLinear, self).__init__()
-        if func == 'linear':
-            self.main = Linear(input_size, output_size, do_p)
-        elif func == 'trilinear':
-            self.main = TriLinear(input_size, output_size, do_p)
-        else:
-            assert False
-
-    def forward(self, a, b, mask):
-        return self.main(a, b, mask)
-    
-            
-class FixedEmbedding(nn.Embedding):
-    def forward(input):
-        out = super(FixedEmbedding, self).forward(input)
-        return Variable(out.data)
-
-
-class BiAttention(nn.Module):
-    def __init__(self, args, logits_size):
-        super(BiAttention, self).__init__()
-        self.lin = TFLinear(size, args.attn_func)
-        self.args = args
-
-    def forward(self, text, query, text_mask, query_mask):
-        a = self.args
-        max_sent_size, max_num_sents, max_q_size = \
-            a.max_sent_size, a.max_num_sents, a.max_q_size
-        text_aug = text.unsqueeze(3).repeat(1, 1, 1, max_q_size, 1)
-        query_aug = query.unqueeze(1).unsqueeze(1).repeat(1, max_num_sents, max_sent_size, 1, 1)
-        text_mask_aug = text_mask.unsqueeze(3).repeat(1, 1, 1, max_q_size)
-        query_mask_aug = query_mask.unqueeze(1).unsqueeze(1).repeat(1, max_num_sents, max_sent_size, 1)
-        text_query_mask = text_mask_aug * query_mask_aug
-        query_logits = self.lin(text_aug, query_aug, text_query_mask)
-
-        _, query_logits_max = torch.max(query_logits, 3)
-        # c2q
-        text_attn = softsel(text, query_logits_max).unsqueeze(2).repeat(1, 1, max_sent_size, 1)
-        # q2c
-        query_attn = softsel(query_aug, query_logits)
-
-        attn = torch.cat((text, query_attn, text * query_attn, text * text_attn), 3)
-        return attn

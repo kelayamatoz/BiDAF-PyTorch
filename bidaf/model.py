@@ -3,9 +3,11 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 import bidaf.layers as L
+from bidaf.layers import softsel
 import numpy as np
 import logging
 import code
+
 
 from numpy import genfromtxt
 from torch.autograd import Variable
@@ -16,8 +18,6 @@ from argparse import ArgumentParser
 
 dtype = torch.FloatTensor
 ldtype = torch.LongTensor
-# dtype = torch.cuda.FloatTensor
-# ldtype = torch.cuda.LongTensor
 
 
 PADDING = 'VALID'
@@ -52,12 +52,19 @@ class BiDAF(nn.Module):
         else:
             highway_outsize = self.dw
         self.highway = L.HighwayNet(config.highway_num_layers, highway_outsize)
-        # self.prepro = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
-        # self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
         self.prepro = L.BiEncoder(config, highway_outsize, hidden_size=config.hidden_size)
         self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=config.hidden_size)
         self.attention_layer = L.AttentionLayer(config, self.JX, self.M, self.JQ, 2 * config.hidden_size)
-
+        # Because p0 = torch.cat([h, u_a, torch.mul(h, u_a), torch.mul(h, h_a)], 3) and the last dim of 
+        # these matrices are d.
+        self.g0_biencoder = L.BiEncoder(config, 8 * config.hidden_size, hidden_size=config.hidden_size)
+        self.g1_biencoder = L.BiEncoder(config, 2 * config.hidden_size, hidden_size=config.hidden_size)
+        # p0: 8 * d. g1: 2 * d
+        self.g1_logits = L.GetLogits(config, 10 * config.hidden_size, input_keep_prob=config.input_keep_prob, function=config.answer_func)
+        # p0: [60, 1, 161, 800], g1: [60, 1, 161, 200], a1: [60, 1, 161, 200], g1 * a1: [60, 1, 161, 200]
+        self.g2_biencoder = L.BiEncoder(config, 14 * config.hidden_size, hidden_size=config.hidden_size)
+        # p0: 8 * d. g2: 2 * d
+        self.g2_logits = L.GetLogits(config, 10 * config.hidden_size, input_keep_prob=config.input_keep_prob, function=config.answer_func)
 
     def forward(self, x, cx, x_mask, q, cq, q_mask, new_emb_mat):
         config = self.config
@@ -94,7 +101,6 @@ class BiDAF(nn.Module):
         # Char Embedding Layer
         # TODO: Send this part to the layers.py
         if config.use_char_emb:
-            print('>>>>>>>>>> char <<<<<<<<<<')
             '''
                 Warning: currently, embedding only looks up 2-D inputs. To make 
                 the embedding work as expected, I needed to flatten it first and 
@@ -106,7 +112,6 @@ class BiDAF(nn.Module):
             Acq_ = self.char_embed(Variable(self.cq)).view(N, JQ, W, dc)
             Acq = Acq_.view(-1, JQ, W, dc)
             assert sum(filter_sizes) == dco, (filter_sizes, dco)
-            print('>>>>>>>>>> conv <<<<<<<<<<')
             xx_ = self.multiconv_1d(Acx, filter_sizes, heights, PADDING)
             if config.share_cnn_weights:
                 qq_ = self.multiconv_1d(Acq, filter_sizes, heights, PADDING, is_shared=True)
@@ -116,7 +121,6 @@ class BiDAF(nn.Module):
             qq = qq_.view(-1, JQ, dco)
 
         if config.use_word_emb:
-            print('>>>>>>>>>> word <<<<<<<<<<') 
             if config.mode == 'train':
                 word_emb_mat = Variable(Tensor(config.emb_mat))
             else:
@@ -124,7 +128,6 @@ class BiDAF(nn.Module):
             if config.use_glove_for_unk:
                 word_emb_mat = torch.cat((word_emb_mat, self.new_emb_mat), 1)
 
-            print('d = ', d)
             Ax = self.word_embed(Variable(self.x)).view(N, M, JX, dw)
             Aq = self.word_embed(Variable(self.q)).view(N, JQ, dw)
 
@@ -137,7 +140,6 @@ class BiDAF(nn.Module):
 
         # Highway network
         if config.highway:
-            print('>>>>>>>>>> highway <<<<<<<<<<') 
             '''
             Warning: From the original tf implementation, it seems that xx and qq 
             go through the same highway network
@@ -153,12 +155,9 @@ class BiDAF(nn.Module):
         xx: [batch_size, max_num_sents, max_sent_size, di]
         qq: [batch_size, max_ques_size, di]
         '''
-        print('>>>>>>>>>> prepro <<<<<<<<<<') 
         xx = xx.view(N, M * JX, -1) # [batch_size, sequence, feature]
         xx = xx.permute(1, 0, 2)
         qq = qq.permute(1, 0, 2)
-        print('xx size = ', xx.size())
-        print('qq size = ', qq.size())
         u = self.prepro(qq)
         if config.share_lstm_weights:
             h = self.prepro(xx)
@@ -168,12 +167,35 @@ class BiDAF(nn.Module):
         h = h.permute(1, 0, 2).contiguous().view(N, M, JX, -1) # [N, M, JX, 2 * d]
         u = u.permute(1, 0, 2) # [N, JQ, 2 * d]
 
-        print('>>>>>>>>>> main <<<<<<<<<<') 
-        print('h size = ', h.size()) 
-        print('u size = ', u.size())
+        p0 = self.attention_layer(h, u, h_mask=self.x_mask, u_mask=self.q_mask) # (N, M, JX, 8 * d)
+        g0 = self.g0_biencoder(p0.view(N, M * JX, -1)) # (N, M, JX, 2d)
+        g1 = self.g1_biencoder(g0.view(N, M * JX, -1))
+        logits = self.g1_logits((g1, p0), self.x_mask.squeeze())
 
-        p0 = self.attention_layer(h, u, h_mask=self.x_mask, u_mask=self.q_mask)
-        return None, None
+        a1i = softsel(g1.view(N, M * JX, 2 * d), logits.view(N, M * JX))
+        a1i = a1i.unsqueeze(1).unsqueeze(1).repeat(1, M, JX, 1)
+
+        g1 = g1.view(N, M, JX, -1)
+        g2 = self.g2_biencoder(torch.cat([p0, g1, a1i, g1 * a1i], 3).squeeze())
+        logits2 = self.g2_logits((g2, p0), self.x_mask.squeeze())
+
+        flat_logits = logits.view(-1, M * JX) 
+        flat_yp = F.softmax(flat_logits)
+        flat_logits2 = logits2.view(-1, M * JX)
+        flat_yp2 = F.softmax(flat_logits2)
+
+        if config.na:
+            print("na case not implemented!")
+            na_bias_tiled = Variable(Tensor(1,1).type(dtype)).repeat(N, 1)
+            concat_flat_logits = torch.cat([na_bias_tiled, flat_logits], 1)
+            concat_flat_yp = F.softmax(concat_flat_logits)
+            print(concat_flat_yp.size())
+
+        yp = flat_yp.view(-1, M, JX)
+        yp2 = flat_yp2.view(-1, M, JX)
+        wyp = F.sigmoid(logits2)
+
+        return yp, yp2
 
 
 if __name__ == '__main__':
@@ -209,6 +231,9 @@ if __name__ == '__main__':
     flags.add_argument("--debug", default=False, action="store_true", help="Debugging mode? [False]")
     flags.add_argument("--load_ema", type=bool, default=True, help="load exponential average of variables when testing?  [True]")
     flags.add_argument("--eval", type=bool, default=True, help="eval? [True]")
+    flags.add_argument("--wy", type=bool, default=False, help="Use wy for loss / eval? [False]")
+    flags.add_argument("--na", type=bool, default=False, help="Enable no answer strategy and learn bias? [False]")
+    flags.add_argument("--th", type=float, default=0.5, help="Threshold [0.5]")
 
     # Training / test parameters
     flags.add_argument("--batch_size", type=int, default=60, help="Batch size [60]")
@@ -305,12 +330,6 @@ if __name__ == '__main__':
 
     x = np.zeros([N, M, JX], dtype='int')
     cx = np.zeros([N, M, JX, W], dtype='int')
-    '''
-    TODO: 
-    It seems that pytorch doesn't take a bool tensor. Only an 
-    int tensor can be taken. Need to change the trainer to use
-    int tensors...
-    '''
     x_mask = np.ones([N, M, JX], dtype='int')
     q = np.zeros([N, JQ], dtype='int')
     cq = np.zeros([N, JQ, W], dtype='int')
@@ -328,3 +347,5 @@ if __name__ == '__main__':
 
     inputs = [x, cx, x_mask, q, cq, q_mask, new_emb_mat]
     start, end = model(*inputs)
+    print('start = ', start)
+    print('end = ', end)
