@@ -33,7 +33,7 @@ def flatten(tensor, keep):
 
 
 def exp_mask(logits, mask):
-    return torch.add_(logits, (torch.ones(mask.size()).type(ldtype) - mask)) * VERY_NEGATIVE_NUMBER
+    return torch.add(logits.data, (torch.ones(mask.size()) - mask.type(dtype)) * VERY_NEGATIVE_NUMBER)
 
 
 def masked_softmax(logits, mask=None):
@@ -223,15 +223,17 @@ class BiEncoder(nn.Module):
 
     def forward(self, inputs):
         seq_len, batch_size, feature_size = inputs.size()
-        print('batch_size =  ', str(batch_size))
-        print('seq_len =  ', str(seq_len))
-        print('feature_size =  ', str(feature_size))
+        print('batch_size = ', str(batch_size))
+        print('seq_len = ', str(seq_len))
+        print('feature_size = ', str(feature_size))
 
         # TODO: Would these two hidden variables requires grads?
         # What is a good initializer? 
 
-        h_0 = Variable(torch.zeros(seq_len, batch_size, feature_size), requires_grad=False)
-        c_0 = Variable(torch.zeros(seq_len, batch_size, feature_size), requires_grad=False)
+        # h_0 = Variable(torch.zeros(2, batch_size, feature_size), requires_grad=False)
+        # c_0 = Variable(torch.zeros(2, batch_size, feature_size), requires_grad=False)
+        h_0 = Variable(torch.zeros(2, batch_size, self.config.hidden_size), requires_grad=False)
+        c_0 = Variable(torch.zeros(2, batch_size, self.config.hidden_size), requires_grad=False)
         outputs, (h_n, c_n) = self.rnn(inputs, (h_0, c_0)) 
         return outputs
 
@@ -261,7 +263,9 @@ class GetLogits(nn.Module):
 
         flat_outs = self.linear(torch.cat(flat_args, 1))
         out = reconstruct(flat_outs, flat_args[0], 1)
-        logits = out.squeeze([len(list(flat_args[0])) - 1])
+        logits = out.squeeze()
+        # logits = out.squeeze([len(list(flat_args[0])) - 1])
+        # TODO: seems that we only have one dim here?
         if mask is not None:
             logits = exp_mask(logits, mask)
 
@@ -285,6 +289,7 @@ class BiAttentionLayer(nn.Module):
     def forward(self, h, u, h_mask=None, u_mask=None):
         h_aug = h.unsqueeze(3).repeat(1, 1, 1, self.JQ, 1)
         u_aug = u.unsqueeze(1).unsqueeze(1).repeat(1, self.M, self.JX, 1, 1)
+        print('u_aug size =', str(u_aug.size()))
         if h_mask is None:
             hu_mask = None
         else:
@@ -292,7 +297,10 @@ class BiAttentionLayer(nn.Module):
             u_mask_aug = u_mask.unsqueeze(1).unsqueeze(1).repeat(1, self.M, self.JX, 1)
             hu_mask = h_mask_aug & u_mask_aug 
 
-        logits = self.get_logits((h_aug, u_aug), hu_mask)
+        u_logits = self.get_logits((h_aug, u_aug), hu_mask)
+        print('u_logits size', u_logits.size())
+        print('u_aug size', u_aug.size())
+        # code.interact(local=locals())
         u_a = softsel(u_aug, u_logits)  # [N, M, JX, d]
         h_a = softsel(h, torch.max(u_logits, 3)) # [N, M, d]
         h_a = h_a.unsqueeze(h_a, 2).repeat(1, 1, self.JX, 1)

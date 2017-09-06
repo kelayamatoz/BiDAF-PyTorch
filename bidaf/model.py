@@ -52,8 +52,10 @@ class BiDAF(nn.Module):
         else:
             highway_outsize = self.dw
         self.highway = L.HighwayNet(config.highway_num_layers, highway_outsize)
-        self.prepro = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
-        self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
+        # self.prepro = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
+        # self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=highway_outsize)
+        self.prepro = L.BiEncoder(config, highway_outsize, hidden_size=config.hidden_size)
+        self.prepro_x = L.BiEncoder(config, highway_outsize, hidden_size=config.hidden_size)
         self.attention_layer = L.AttentionLayer(config, self.JX, self.M, self.JQ, 2 * highway_outsize)
 
 
@@ -158,6 +160,8 @@ class BiDAF(nn.Module):
         xx = xx.view(N, M * JX, -1) # [batch_size, sequence, feature]
         xx = xx.permute(1, 0, 2)
         qq = qq.permute(1, 0, 2)
+        print('xx size = ', xx.size())
+        print('qq size = ', qq.size())
         u = self.prepro(qq)
         if config.share_lstm_weights:
             h = self.prepro(xx)
